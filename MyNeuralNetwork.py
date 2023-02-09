@@ -1,6 +1,7 @@
 import numpy as np
 import itertools
 from typing import Tuple, List, Optional
+import json
 
 import time
 import torch
@@ -39,25 +40,26 @@ class NeuralNetwork(pl.LightningModule):
         self.flatten = nn.Flatten()
         self.h = nn.Sequential(
             nn.Linear(2, 48),
-            nn.Tanh(),
-            nn.Linear(48, 32),
-            nn.Tanh(),
-            nn.Linear(32, 8),
-            nn.Tanh(),
-            nn.Linear(8,1)
+            nn.ReLU(),
+            nn.Linear(48, 48),
+            nn.ReLU(),
+            nn.Linear(48, 16),
+            nn.ReLU(),
+            nn.Linear(16,1)
         )
         self.V = nn.Sequential(
             nn.Linear(2, 48),
-            nn.Tanh(),
+            nn.ReLU(),
             nn.Linear(48, 32),
-            nn.Tanh(),
+            nn.ReLU(),
             nn.Linear(32, 8),
-            nn.Tanh(),
+            nn.ReLU(),
             nn.Linear(8,1)
         )
         u_lower, u_upper = self.dynamic_system.control_limits
         self.u_v =[u_lower.item(), u_upper.item()]
-        
+        self.train_loss = []
+        self.val_loss = []
 
     def prepare_data(self):
         return self.data_module.prepare_data()
@@ -71,6 +73,8 @@ class NeuralNetwork(pl.LightningModule):
     def val_dataloader(self):
         return self.data_module.val_dataloader()
 
+    def test_dataloader(self):
+        return self.data_module.test_dataloader()
 
     def forward(self, s):
         hs = self.h(s)
@@ -99,7 +103,7 @@ class NeuralNetwork(pl.LightningModule):
         # We need to initialize the Jacobian to reflect the normalization that's already
         # been done to x
 
-        x_norm = x  #self.normalize(x)
+        x_norm = x # self.normalize(x)
 
         bs = x_norm.shape[0]
         JV = torch.zeros(
@@ -189,7 +193,7 @@ class NeuralNetwork(pl.LightningModule):
         safe_hs_term =  safe_violation.mean()
         loss.append(("CLBF safe region term", safe_hs_term))
         if accuracy:
-            safe_V_acc = (safe_violation <= eps).sum() / safe_violation.nelement()
+            safe_V_acc = (safe_violation >= eps).sum() / safe_violation.nelement()
             loss.append(("CLBF safe region accuracy", safe_V_acc))
 
         #   3.) h < 0 in the unsafe region
@@ -199,7 +203,7 @@ class NeuralNetwork(pl.LightningModule):
         loss.append(("CLBF unsafe region term", unsafe_hs_term))
         if accuracy:
                 unsafe_V_acc = (
-                    unsafe_violation > eps 
+                    unsafe_violation >= eps 
                 ).sum() / unsafe_violation.nelement()
                 loss.append(("CLBF unsafe region accuracy", unsafe_V_acc))
 
@@ -227,7 +231,10 @@ class NeuralNetwork(pl.LightningModule):
         """
         eps = 1
         loss = []
-        descent_loss, self.u_star_index = self.gradient_descent_violation(s, self.u_v)
+
+        s_feasible = s[torch.logical_not(unsafe_mask)]
+
+        descent_loss, self.u_star_index = self.gradient_descent_violation(s_feasible, self.u_v)
         descent_loss =  F.relu(eps - descent_loss)
         descent_loss_mean = descent_loss.mean()
         loss.append(("descent loss", descent_loss_mean))
@@ -443,7 +450,8 @@ class NeuralNetwork(pl.LightningModule):
 
         # Log the overall loss...
         self.log("Total loss / train", avg_losses["loss"], sync_dist=True)
-        print(f"\n the overall loss of this epoch {avg_losses['loss']}")
+        print(f"\n the overall loss of this training epoch {avg_losses['loss']}\n")
+        self.train_loss.append(avg_losses['loss'])
         # And all component losses
         for loss_key in avg_losses.keys():
             # We already logged overall loss, so skip that here
@@ -476,13 +484,13 @@ class NeuralNetwork(pl.LightningModule):
                 total_loss += loss_value
 
         # Also compute the accuracy associated with each loss
-        component_losses.update(
-            self.boundary_loss(x, safe_mask, unsafe_mask)
-        )
-        if self.current_epoch > self.learn_shape_epochs:
-            component_losses.update(
-                self.descent_loss(x, safe_mask, unsafe_mask)
-            )
+        # component_losses.update(
+        #     self.boundary_loss(x, safe_mask, unsafe_mask)
+        # )
+        # if self.current_epoch > self.learn_shape_epochs:
+        #     component_losses.update(
+        #         self.descent_loss(x, safe_mask, unsafe_mask)
+        #     )
 
         batch_dict = {"val_loss": total_loss, **component_losses}
 
@@ -510,6 +518,8 @@ class NeuralNetwork(pl.LightningModule):
 
         # Log the overall loss...
         self.log("Total loss / val", avg_losses["val_loss"], sync_dist=True)
+        print(f"\n the overall loss of this validation epoch {avg_losses['val_loss']}\n")
+        self.val_loss.append(avg_losses['val_loss'])
         # And all component losses
         for loss_key in avg_losses.keys():
             # We already logged overall loss, so skip that here
@@ -528,6 +538,71 @@ class NeuralNetwork(pl.LightningModule):
         # self.experiment_suite.run_all_and_log_plots(
         #     self, self.logger, self.current_epoch
         # )
+
+    def test_step(self, batch, batch_idx):
+        """Conduct the validation step for the given batch"""
+        # Extract the input and masks from the batch
+        x, safe_mask, unsafe_mask = batch
+
+        # Get the various losses
+        batch_dict = {"shape_h": {},"safe_violation": {}, "unsafe_violation": {}, "descent_violation": {} }
+        
+        # record shape_h
+        h_x = self.h(x)
+        batch_dict["shape_h"]["state"] = x
+        batch_dict["shape_h"]["val"] = h_x
+
+        # record safe_violation
+        
+
+        h_x_neg_mask = h_x < 0 
+        unit_index= torch.hstack((safe_mask.unsqueeze(dim=1), h_x_neg_mask))
+
+        h_x_safe_violation_indx = torch.all(unit_index, dim=1)
+        ## record states and its value
+        s_safe_violation = x[h_x_safe_violation_indx]
+        h_s_safe_violation = h_x[h_x_safe_violation_indx]
+
+        batch_dict["safe_violation"]["state"] = s_safe_violation
+        batch_dict["safe_violation"]["val"] = h_s_safe_violation
+
+        # record unsafe_violation
+        h_x_pos_mask = h_x >= 0
+        unit_index = torch.hstack((unsafe_mask.unsqueeze(dim=1), h_x_pos_mask))
+
+        h_x_unsafe_violation_indx = torch.all(unit_index, dim=1)
+        ##  record states and its value
+        s_unsafe_violation = x[h_x_unsafe_violation_indx]
+        h_s_unsafe_violation = h_x[h_x_unsafe_violation_indx]
+
+        batch_dict["unsafe_violation"]["state"] = s_safe_violation
+        batch_dict["unsafe_violation"]["val"] = h_s_safe_violation
+
+        # record descent_violation
+        descent_violation, u_star_index = self.gradient_descent_violation(x, self.u_v)
+
+        descent_violation_mask = torch.logical_and(descent_violation < 0, torch.logical_not(unsafe_mask))  
+
+        s_descent_violation = x[descent_violation_mask]
+        u_star_index_descent_violation = u_star_index[descent_violation_mask]
+        h_s_descent_violation = h_x[descent_violation_mask]
+        Lf_h_descent_violation, Lg_h_descent_violation = self.V_lie_derivatives(s_descent_violation)
+
+        batch_dict["descent_violation"]["state"] = s_descent_violation
+        batch_dict["descent_violation"]["val"] = h_s_descent_violation
+        batch_dict["descent_violation"]["Lf_h"] =  Lf_h_descent_violation
+        batch_dict["descent_violation"]["Lg_h"] = Lg_h_descent_violation
+        batch_dict["descent_violation"]["u_star_index"] = u_star_index_descent_violation
+
+        return batch_dict
+
+    def test_epoch_end(self, outputs):
+        
+        print("test_epoch_end")
+        torch.save(outputs, "test_results.pt")
+        
+        print("results is save to test_result.pt")
+        
 
 
     def configure_optimizers(self):

@@ -15,14 +15,14 @@ from DataModule import DataModule
 # h = torch.load("h.pt")
 
 
-data_module = DataModule(system=car1, grid_gap=0.01)
+data_module = DataModule(system=car1, train_batch_size=64, test_batch_size=128, train_grid_gap=0.01, test_grid_gap=0.005)
 
 NN = NeuralNetwork(dynamic_system=car1, data_module=data_module, learn_shape_epochs=0)
 
 trainer = pl.Trainer(
     accelerator = "gpu",
     devices = 1,
-    max_epochs=5
+    max_epochs=100
     )
 
 torch.autograd.set_detect_anomaly(True)

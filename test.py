@@ -3,27 +3,18 @@ from CARs import car1
 from MyNeuralNetwork import *
 from DataModule import DataModule
 
-t = torch.tensor([[[1, 2],
-                   [3, 4]],
-                  [[5, 6],
-                   [7, 8]]])
+x0 = torch.rand(3, 2,dtype=torch.float)*2 - 1
 
-print(t.shape)
-a = torch.flatten(t)
-print(a.shape)
-b = torch.flatten(t, start_dim=1)
-print(b.shape)
+data_module = DataModule(system=car1, train_grid_gap=0.1, test_grid_gap=0.3)
 
-# x0 = torch.rand(3, 2,dtype=torch.float)*2 - 1
+h = NeuralNetwork(dynamic_system=car1, data_module=data_module)
 
-# data_module = DataModule(system=car1, training_sample_num=50)
+h.prepare_data()
 
-# h = NeuralNetwork(dynamic_system=car1, data_module=data_module)
 
-# h.prepare_data()
 
-# h.descent_loss(h.data_module.s_training, h.data_module.safe_mask_training, h.data_module.unsafe_mask_training)
+# h.boundary_loss(h.data_module.s_training, h.data_module.safe_mask_training, h.data_module.unsafe_mask_training, accuracy=True)
 
 # h.V_loss(h.data_module.s_training, h.data_module.safe_mask_training, h.data_module.unsafe_mask_training)
 
-# del h
+del h
