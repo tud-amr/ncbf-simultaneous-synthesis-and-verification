@@ -1,145 +1,80 @@
 import numpy as np
-import matplotlib.pyplot as plt
+import itertools
+from typing import Tuple, List, Optional
+
+import time
 import torch
 from torch import nn
+import torch.nn.functional as F
+import pytorch_lightning as pl
+
 from matplotlib import cm
 from matplotlib.ticker import LinearLocator
+import matplotlib.pyplot as plt
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Using {device} device")
-
-############### define dynamics #######################
-A = torch.tensor([[0, 1],[0, 0]], dtype=torch.float).to(device)
-def f(s):
-    result = A @ s.T 
-    return result.T
-
-def g(s, m=0.5):
-    result =  torch.tensor([0, m], dtype=torch.float).reshape((1,2)).to(device) * torch.ones((s.shape[0], 2), dtype=torch.float).to(device)
-    return result
-
-
-
-
-############### exam dynamic model ##################
-# dt = 0.01
-# t = 0
-# s0 = torch.tensor([0,0], dtype=torch.float).reshape((2,1))
-# s = s0
-
-# s_record = []
-# u_record = []
-# t_record = []
-
-# for k in range(1000):
-#     u = torch.tensor([0.3], dtype=torch.float).reshape((1,1))
-#     ds = f(s) + g(s) @ u
-#     s = s+ ds * dt
-#     t = t+dt
-
-#     s_record.append(s)
-#     u_record.append(u)
-#     t_record.append(t)
-
-# t_record = torch.tensor(t_record)
-# s_record = torch.hstack(s_record)
-# u_record = torch.tensor(u_record)
-
-# plt.figure()
-# plt.plot(t_record, s_record[0, :])
-# plt.show()    
-
-
-################### define constraints functions#######################
-
-
-u_v1 = -1
-u_v2 = 1
-A1 = torch.tensor([1,0], dtype=torch.float).reshape((1,2)).to(device)
-A2 = torch.tensor([0,1], dtype=torch.float).reshape((1,2)).to(device)
-
-def l1(s):
-    result = A1 @ s.T + 1
-    return result.T
-
-
-def l2(s):
-    result = -A1 @ s.T + 1
-    return result.T
-
-def l3(s):
-    result = A2 @ s.T + 1
-    return result.T
-
-def l4(s):
-    result = - A2 @ s.T + 1
-    return result.T
-
-def h_bar(s, nc=4, r=-10):
-    w_i = 1/nc
-    sum = w_i*( torch.exp(r*l1(s)) + torch.exp(r*l2(s)) + torch.exp(r*l3(s)) + torch.exp(r*l4(s)) ) + torch.finfo(torch.float).tiny
-    return 1/r * torch.log(sum)
-
-
-####################### show h_bar #########################
-# X_test = []
-# for i in np.arange(-0.2, 0.2, 0.01):
-#     for j in np.arange(-0.2,0.2,0.01):
-#         X_test.append(np.array([i, j],dtype=np.float32).reshape((2,1)))
-# X_test = np.hstack(X_test).T
-# X_test = torch.from_numpy(X_test).float().to(device)
-# print(X_test.shape)
-
-# y_test = torch.ones((1, X_test.shape[0]), dtype=torch.float).to(device)
-
-# Z = h_bar(X_test)
-# print(Z.shape)
-# x = X_test[:,0].cpu().numpy()
-# y = X_test[:,1].cpu().numpy()
-# z = Z.cpu().numpy().T
-# print(x.shape)
-# print(y.shape)
-# print(z.shape)
-
-# fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
-# sca = ax.scatter(x,y,z)
-
-# X = np.arange(-0.2, 0.2, 0.1)
-# Y = np.arange(-0.2, 0.2, 0.1)
-# X,Y = np.meshgrid(X,Y)
-# Z = 0 * np.sin(X + Y)
-# # Plot the surface.
-# surf = ax.plot_surface(X, Y, Z, facecolors= cm.jet(np.ones((Z.shape[0], Z.shape[1]))) )
-# plt.show()
-
+from DataModule import DataModule
+from system import Car
 
 ######################### define neural network #########################
 
 
-class NeuralNetwork(nn.Module):
-    def __init__(self, h_bar):
+class NeuralNetwork(pl.LightningModule):
+    def __init__(
+        self,
+        dynamic_system: Car,
+        data_module: DataModule,
+        learn_shape_epochs: int = 10,
+        primal_learning_rate: float = 1e-3,
+        gamma: float = 0.9
+        ):
+
         super(NeuralNetwork, self).__init__()
+        
+        self.dynamic_system = dynamic_system
+        self.data_module = data_module
+        self.learn_shape_epochs = learn_shape_epochs
+        self.primal_learning_rate = primal_learning_rate
+        self.dt = self.dynamic_system.dt
+        self.gamma = gamma
         self.flatten = nn.Flatten()
+        self.h = nn.Sequential(
+            nn.Linear(2, 48),
+            nn.Tanh(),
+            nn.Linear(48, 32),
+            nn.Tanh(),
+            nn.Linear(32, 8),
+            nn.Tanh(),
+            nn.Linear(8,1)
+        )
         self.V = nn.Sequential(
-            nn.Linear(2, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, 10),
+            nn.Linear(2, 48),
+            nn.Tanh(),
+            nn.Linear(48, 32),
+            nn.Tanh(),
+            nn.Linear(32, 8),
+            nn.Tanh(),
+            nn.Linear(8,1)
         )
-        self.beta = nn.Sequential(
-            nn.Linear(2, 32),
-            nn.ReLU(),
-            nn.Linear(32, 16),
-            nn.ReLU(),
-            nn.Linear(16, 8),
-        )
-        self.h_bar = h_bar
+        u_lower, u_upper = self.dynamic_system.control_limits
+        self.u_v =[u_lower.item(), u_upper.item()]
+        
+
+    def prepare_data(self):
+        return self.data_module.prepare_data()
+
+    def setup(self, stage: Optional[str] = None):
+        return self.data_module.setup(stage)
+
+    def train_dataloader(self):
+        return self.data_module.train_dataloader()
+
+    def val_dataloader(self):
+        return self.data_module.val_dataloader()
+
 
     def forward(self, s):
+        hs = self.h(s)
         Vs = self.V(s)
-        h_bar_s = self.h_bar(s)
-        beta_s = self.beta(s)
         # print(Vs.shape)
         # print(h_bar_s.shape)
         # print(beta_s.shape)
@@ -147,49 +82,490 @@ class NeuralNetwork(nn.Module):
         # print(torch.norm(Vs, dim=1).reshape(-1,1))
         # print(torch.norm(beta_s, dim=1).reshape(-1,1))
 
-        return torch.norm(Vs, dim=1).reshape(-1,1) * h_bar_s  - torch.norm(beta_s, dim=1).reshape(-1,1)
+        return hs, Vs
+
+    def V_with_jacobian(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Computes the CLBF value and its Jacobian
+
+        args:
+            x: bs x self.dynamics_model.n_dims the points at which to evaluate the CLBF
+        returns:
+            V: bs tensor of CLBF values
+            JV: bs x 1 x self.dynamics_model.n_dims Jacobian of each row of V wrt x
+        """
+
+        # Compute the CLBF layer-by-layer, computing the Jacobian alongside
+
+        # We need to initialize the Jacobian to reflect the normalization that's already
+        # been done to x
+
+        x_norm = x  #self.normalize(x)
+
+        bs = x_norm.shape[0]
+        JV = torch.zeros(
+            (bs, self.dynamic_system.ns, self.dynamic_system.ns)
+        ).type_as(x)
+        # and for each non-angle dimension, we need to scale by the normalization
+        for dim in range(self.dynamic_system.ns):
+            JV[:, dim, dim] = 1.0
+
+        # Now step through each layer in V
+        V = x_norm
+        for layer in self.h:
+            V = layer(V)
+
+            if isinstance(layer, nn.Linear):
+                JV = torch.matmul(layer.weight, JV)
+            elif isinstance(layer, nn.Tanh):
+                JV = torch.matmul(torch.diag_embed(1 - V ** 2), JV)
+            elif isinstance(layer, nn.ReLU):
+                JV = torch.matmul(torch.diag_embed(torch.sign(V)), JV)
+
+        return V, JV
 
 
-# h = NeuralNetwork(h_bar=h_bar).to(device)
-# s0 = torch.tensor([-1.8545, 0.2772], dtype=torch.float).reshape((1,2)).to(device)
-# s0.requires_grad_(True)
-# output = h(s0)
-# print(output)
+    def V_lie_derivatives(
+        self, x: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Compute the Lie derivatives of the CLF V along the control-affine dynamics
 
-#################### define CBF conditions #####################
-def get_dhdx(s, h):
-    output = h(s)
-    output.backward(retain_graph=True)
-    dhdx = s.grad
+        args:
+            x: bs x self.dynamics_model.n_dims tensor of state
+            
+        returns:
+            Lf_V: bs x len(scenarios) x 1 tensor of Lie derivatives of V
+                  along f
+            Lg_V: bs x len(scenarios) x self.dynamics_model.n_controls tensor
+                  of Lie derivatives of V along g
+        """
 
-    return dhdx
+        # Get the Jacobian of V for each entry in the batch
+        _, gradh = self.V_with_jacobian(x)
+        # print(f"gradh shape is {gradh.shape}")
+        # We need to compute Lie derivatives for each scenario
+        batch_size = x.shape[0]
+        Lf_V = torch.zeros(batch_size, 2, 1)
+        Lg_V = torch.zeros(batch_size, 2, 1)
 
-def c(s, u_vi, dhdx, h, alpha=0.5):
-    output = h(s)
+        f = torch.unsqueeze(self.dynamic_system.f(x), dim=-1)
+        g = torch.unsqueeze(self.dynamic_system.g(x), dim=-1)
+        # print(f"f shape is {f.shape}")
+        # print(f"g shape is {g.shape}")
+
+        Lf_V = torch.bmm(gradh, f).squeeze(1)
+        Lg_V = torch.bmm(gradh, g).squeeze(1)
+        # print(f"Lf_V shape is {Lf_V.shape}")
+        # print(f"Lg_V shape is {Lg_V.shape}")
+        
+        return Lf_V, Lg_V
+
+    def boundary_loss(
+        self,
+        s : torch.Tensor,
+        safe_mask: torch.Tensor,
+        unsafe_mask: torch.Tensor,
+        accuracy: bool = False,
+    ) -> List[Tuple[str, torch.Tensor]]:
+        """
+        Evaluate the loss on the CLBF due to boundary conditions
+
+        args:
+            s: the points at which to evaluate the loss,
+            goal_mask: the points in x marked as part of the goal
+            safe_mask: the points in x marked safe
+            unsafe_mask: the points in x marked unsafe
+        returns:
+            loss: a list of tuples containing ("category_name", loss_value).
+        """
+        eps = 1e-2
+        # Compute loss to encourage satisfaction of the following conditions...
+        loss = []
+
+        hs = self.h(s)
+
+        # 1.) h > 0 in the safe region
+        hs_safe = hs[safe_mask]
+        safe_violation = 1e2 *  F.relu(eps - hs_safe)
+        safe_hs_term =  safe_violation.mean()
+        loss.append(("CLBF safe region term", safe_hs_term))
+        if accuracy:
+            safe_V_acc = (safe_violation <= eps).sum() / safe_violation.nelement()
+            loss.append(("CLBF safe region accuracy", safe_V_acc))
+
+        #   3.) h < 0 in the unsafe region
+        hs_unsafe = hs[unsafe_mask]
+        unsafe_violation = 1e2 *  F.relu(eps + hs_unsafe)
+        unsafe_hs_term = unsafe_violation.mean()
+        loss.append(("CLBF unsafe region term", unsafe_hs_term))
+        if accuracy:
+                unsafe_V_acc = (
+                    unsafe_violation > eps 
+                ).sum() / unsafe_violation.nelement()
+                loss.append(("CLBF unsafe region accuracy", unsafe_V_acc))
+
+        return loss
     
-    return dhdx @ f(s).T + dhdx @ g(s).T * u_vi + alpha * output
+    def descent_loss(
+        self,
+        s: torch.Tensor,
+        safe_mask: torch.Tensor,
+        unsafe_mask: torch.Tensor,
+        accuracy: bool = False,
+        requires_grad: bool = False,
+    ) -> List[Tuple[str, torch.Tensor]]:
+        """
+        Evaluate the loss on the CLBF due to the descent condition
+
+        args:
+            x: the points at which to evaluate the loss,
+            goal_mask: the points in x marked as part of the goal
+            safe_mask: the points in x marked safe
+            unsafe_mask: the points in x marked unsafe
+            accuracy: if True, return the accuracy (from 0 to 1) as well as the losses
+        returns:
+            loss: a list of tuples containing ("category_name", loss_value).
+        """
+        eps = 1
+        loss = []
+        descent_loss, self.u_star_index = self.gradient_descent_violation(s, self.u_v)
+        descent_loss =  F.relu(eps - descent_loss)
+        descent_loss_mean = descent_loss.mean()
+        loss.append(("descent loss", descent_loss_mean))
+        if accuracy:
+            descent_loss_acc = (descent_loss > eps).sum()/(descent_loss.nelement())
+            loss.append(("CLBF descent accuracy (linearized)", descent_loss_acc))
+        
+        return loss
+
+    def V_loss(self, 
+        s: torch.Tensor,
+        safe_mask: torch.Tensor,
+        unsafe_mask: torch.Tensor,
+        ) -> List[Tuple[str, torch.Tensor]]:
 
 
-def C_bar(s, h, u_v1, u_v2, dhdx, nv=2, r=10):
-    w_i = 1/nv
-    sum = w_i*( torch.exp(r*c(s, u_v1, dhdx, h)) + torch.exp(r*c(s, u_v2, dhdx, h)) ) + torch.finfo(torch.float).tiny
-    return 1/r * torch.log(sum)
+        C_mask = self.h(s) >= 0
+        C_mask = torch.squeeze(C_mask, dim=-1)
+        
+        #C_C_mask = ~C_mask
 
-def myCustomLoss(h_bar_s, C_bar_s, epsilon = 0.01):
+        unsafe_mask = self.dynamic_system.unsafe_mask(s)
+        unsafe_mask = torch.squeeze(unsafe_mask, dim=-1)
+        
+        safe_mask = self.dynamic_system.safe_mask(s)
+        safe_mask = torch.squeeze(safe_mask, dim=-1)
+
+        unit_safe_C = torch.hstack(( torch.unsqueeze(safe_mask,dim=1)  , torch.unsqueeze(~C_mask, dim=1)))
+        A_slash_C_mask = torch.all(unit_safe_C, dim=-1)
+
+        V_s = self.V(s)
+        loss = []
+
+        if C_mask.sum() > 0:
+            V_s_C = V_s[C_mask]
+            loss_1 = torch.mean( torch.pow(V_s_C - 1, 2) )
+            loss.append(("V loss in safe set", loss_1))
+        
+        if unsafe_mask.sum() > 0:
+            V_s_A_C =V_s[unsafe_mask]
+            loss_2 = torch.mean( torch.pow(V_s_A_C + 1, 2) )
+            loss.append(("V loss in unsafe set", loss_2))
+
+        if A_slash_C_mask.sum() > 0:
+            V_s_A_slash_C = V_s[A_slash_C_mask]
+
+            u_star_list = [ torch.Tensor([u_v[i]]).float() for i in self.u_star_index]
+            u_star = torch.unsqueeze(torch.hstack(u_star_list), dim=1)
+            u_star_CC = torch.unsqueeze(u_star[A_slash_C_mask], dim=1).to(s.device)
+
+            s_else = s[A_slash_C_mask]
+
+            ds = self.dynamic_system.f(s_else) + self.dynamic_system.g(s_else) * u_star_CC
+            s_plus = s_else + ds * self.dt
+            loss_3 = torch.mean( torch.pow( V_s_A_slash_C - (0.5 + self.gamma * self.V(s_plus))  , 2) ) 
+            # loss.append(("V loss in feasible set", loss_3))
+
+
+        # V_s = self.V(s)
+
+        # s_C = s[C_mask, :]
+        # V_s_C = V_s[C_mask, :]
+
+        # s_else = s[~C_mask, :] 
+        # V_s_else = V_s[~C_mask, :]
+
+        # if C_mask.sum() > 0:
+        #     V_s_C_bar = torch.mean(torch.sign( self.dynamic_system.state_constraints(s_C) ) + 1, dim=-1)
+        #     loss_1 = torch.mean( torch.pow(V_s_C - V_s_C_bar, 2) ) 
+        #     # loss_1 = torch.mean( torch.pow(V_s_C - 1, 2) ) 
+        # else:
+        #     loss_1 = None
+
+        # if  C_C_mask.sum() > 0:
+        #     u_star_list = [ torch.Tensor([u_v[i]]).float() for i in self.u_star_index]
+        #     u_star = torch.unsqueeze(torch.hstack(u_star_list), dim=1)
+        #     u_star_CC = torch.unsqueeze(u_star[C_C_mask], dim=1).to(s.device)
+
+        #     ds = self.dynamic_system.f(s_else) + self.dynamic_system.g(s_else) * u_star_CC
+        #     s_plus = s_else + ds * self.dt
+        #     V_s_else_bar = torch.mean(torch.sign( self.dynamic_system.state_constraints(s_else) ) + 1, dim=-1) + self.gamma * self.V(s_plus)
+        #     loss_2 = torch.mean( torch.pow( V_s_else - V_s_else_bar, 2 ) )
+        #     # loss_2 = torch.mean( torch.pow( V_s_else - (-1), 2 ) )
+        # else:
+        #     loss_2 = None
+
+        # loss = []
+        # if loss_1 is not None:
+        #     loss.append(("V loss in safe set", loss_1))
+        # if loss_2 is not None:
+        #     loss.append(("V loss outside safe set", loss_2))
+        
+        return loss
+
+    def test_loss(self, 
+        s: torch.Tensor,
+        safe_mask: torch.Tensor,
+        unsafe_mask: torch.Tensor
+        ):
+        hs = self.h(s)
+        loss = []
+        test_loss = torch.pow(hs - 1, 2)
+        test_loss_mean = torch.mean(test_loss)
+        loss.append(("test loss", test_loss_mean))
+        
+        return loss
+
+    def Dt(self, s, u_vi):
+        Lf_h, Lg_h = self.V_lie_derivatives(s)
+
+        return Lf_h + Lg_h * u_vi
+
+    def gradient_descent_condition(self, s, u_vi, alpha=0.5):
+        output = self.h(s)
+        dt = self.Dt(s, u_vi)
+
+        result = dt + alpha * output
+        
+        return result
+
+    def gradient_descent_violation(self, s, u_v):
+        
+        c_list = [self.gradient_descent_condition(s, u) for u in u_v]
+        c_list = torch.hstack(c_list)
+        
+        violation_max, u_max_index = torch.max(c_list, dim=1) 
+
+        return violation_max, u_max_index
+
+
+    def normalize(
+        self, x: torch.Tensor, k: float = 1.0
+    ) -> torch.Tensor:
+        """Normalize the state input to [-k, k]
+
+        args:
+            dynamics_model: the dynamics model matching the provided states
+            x: bs x self.dynamics_model.n_dims the points to normalize
+            k: normalize non-angle dimensions to [-k, k]
+        """
+        x_min, x_max = self.dynamic_system.domain_limits
+        x_center = (x_max + x_min) / 2.0
+        x_range = (x_max - x_min) / 2.0
+        # Scale to get the input between (-k, k), centered at 0
+        x_range = x_range / k
+
+
+        # Do the normalization
+        return (x - x_center.type_as(x)) / x_range.type_as(x)
+
     
-    return (torch.sgn(h_bar_s) + 1)/2 * torch.relu(-C_bar_s+epsilon)
+    def training_step(self, batch, batch_idx):
+        """Conduct the training step for the given batch"""
+        # Extract the input and masks from the batch
+        x, safe_mask, unsafe_mask = batch
+
+        # Compute the losses
+        component_losses = {}
+        component_losses.update(
+            self.boundary_loss(x, safe_mask, unsafe_mask, accuracy=True)
+        )
+
+        if self.current_epoch > self.learn_shape_epochs:
+            component_losses.update(
+                self.descent_loss(
+                    x, safe_mask, unsafe_mask, accuracy=True,requires_grad=True
+                )
+            )
+            # component_losses.update(
+            #      self.V_loss(x, safe_mask, unsafe_mask)
+            # )
+
+        # component_losses = {}
+        # component_losses.update(
+        #     self.test_loss(x, safe_mask, unsafe_mask)
+        # )
+
+        # Compute the overall loss by summing up the individual losses
+        total_loss = torch.tensor(0.0).type_as(x)
+        # For the objectives, we can just sum them
+        for _, loss_value in component_losses.items():
+            if not torch.isnan(loss_value):
+                total_loss += loss_value
+
+        batch_dict = {"loss": total_loss, **component_losses}
+
+        return batch_dict
+    
+
+    def training_epoch_end(self, outputs):
+        """This function is called after every epoch is completed."""
+        # Outputs contains a list for each optimizer, and we need to collect the losses
+        # from all of them if there is a nested list
+        if isinstance(outputs[0], list):
+            outputs = itertools.chain(*outputs)
+
+        # Gather up all of the losses for each component from all batches
+        losses = {}
+        for batch_output in outputs:
+            for key in batch_output.keys():
+                # if we've seen this key before, add this component loss to the list
+                if key in losses:
+                    losses[key].append(batch_output[key])
+                else:
+                    # otherwise, make a new list
+                    losses[key] = [batch_output[key]]
+
+        # Average all the losses
+        avg_losses = {}
+        for key in losses.keys():
+            key_losses = torch.stack(losses[key])
+            avg_losses[key] = torch.nansum(key_losses) / key_losses.shape[0]
+
+        # Log the overall loss...
+        self.log("Total loss / train", avg_losses["loss"], sync_dist=True)
+        print(f"\n the overall loss of this epoch {avg_losses['loss']}")
+        # And all component losses
+        for loss_key in avg_losses.keys():
+            # We already logged overall loss, so skip that here
+            if loss_key == "loss":
+                continue
+            # Log the other losses
+            self.log(loss_key + " / train", avg_losses[loss_key], sync_dist=True)
+
+
+    def validation_step(self, batch, batch_idx):
+        """Conduct the validation step for the given batch"""
+        # Extract the input and masks from the batch
+        x, safe_mask, unsafe_mask = batch
+
+        # Get the various losses
+        component_losses = {}
+        component_losses.update(
+            self.boundary_loss(x, safe_mask, unsafe_mask)
+        )
+        if self.current_epoch > self.learn_shape_epochs:
+            component_losses.update(
+                self.descent_loss(x, safe_mask, unsafe_mask)
+            )
+
+        # Compute the overall loss by summing up the individual losses
+        total_loss = torch.tensor(0.0).type_as(x)
+        # For the objectives, we can just sum them
+        for _, loss_value in component_losses.items():
+            if not torch.isnan(loss_value):
+                total_loss += loss_value
+
+        # Also compute the accuracy associated with each loss
+        component_losses.update(
+            self.boundary_loss(x, safe_mask, unsafe_mask)
+        )
+        if self.current_epoch > self.learn_shape_epochs:
+            component_losses.update(
+                self.descent_loss(x, safe_mask, unsafe_mask)
+            )
+
+        batch_dict = {"val_loss": total_loss, **component_losses}
+
+        return batch_dict
+
+    
+    def validation_epoch_end(self, outputs):
+        """This function is called after every epoch is completed."""
+        # Gather up all of the losses for each component from all batches
+        losses = {}
+        for batch_output in outputs:
+            for key in batch_output.keys():
+                # if we've seen this key before, add this component loss to the list
+                if key in losses:
+                    losses[key].append(batch_output[key])
+                else:
+                    # otherwise, make a new list
+                    losses[key] = [batch_output[key]]
+
+        # Average all the losses
+        avg_losses = {}
+        for key in losses.keys():
+            key_losses = torch.stack(losses[key])
+            avg_losses[key] = torch.nansum(key_losses) / key_losses.shape[0]
+
+        # Log the overall loss...
+        self.log("Total loss / val", avg_losses["val_loss"], sync_dist=True)
+        # And all component losses
+        for loss_key in avg_losses.keys():
+            # We already logged overall loss, so skip that here
+            if loss_key == "val_loss":
+                continue
+            # Log the other losses
+            self.log(loss_key + " / val", avg_losses[loss_key], sync_dist=True)
+
+        # **Now entering spicetacular automation zone**
+        # We automatically run experiments every few epochs
+
+        # Only plot every 5 epochs
+        if self.current_epoch % 5 != 0:
+            return
+
+        # self.experiment_suite.run_all_and_log_plots(
+        #     self, self.logger, self.current_epoch
+        # )
+
+
+    def configure_optimizers(self):
+        clbf_params = list(self.h.parameters())  #+ list(self.V.parameters())
+        clbf_opt = torch.optim.SGD(
+            clbf_params,
+            lr=self.primal_learning_rate,
+            weight_decay=1e-6,
+        )
+
+        self.opt_idx_dict = {0: "clbf"}
+
+        return [clbf_opt]
 
 
 
-# dhdx = get_dhdx(s0, h)
+if __name__ == "__main__":
 
-# C_bar_s = C_bar(s0, h, u_v1, u_v2, dhdx)
-# h_bar_s = h_bar(s0)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using {device} device")
+
+    car = Car()
+    data_module = DataModule()
+    h = NeuralNetwork(dynamic_system=car, data_module=data_module).to(device)
+    s0 = torch.tensor([-1.8545, 0.2772, 2.34, -4.23], dtype=torch.float).reshape((2,2)).to(device)
+    s0.requires_grad_(True)
+    output = h(s0)
+    print(output)
+    _, gradh = h.V_with_jacobian(s0)
+    print(gradh)
+    print(gradh.shape)
 
 
-# loss = myCustomLoss(h_bar_s, C_bar_s)
-# loss.backward()
+# def myCustomLoss(h_bar_s, C_bar_s, epsilon = 0.01):
+    
+#     return (torch.sgn(h_bar_s) + 1)/2 * torch.relu(-C_bar_s+epsilon)
 
-# print(s0.grad)
+
+
 
 
