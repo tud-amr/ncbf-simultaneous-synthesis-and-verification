@@ -224,7 +224,7 @@ class Car:
             Lg_V_np = Lg_V[batch_idx, 0].detach().cpu().numpy()
             Lf_V_np = Lf_V[batch_idx, 0].detach().cpu().numpy()
             V_np = V[batch_idx, 0].detach().cpu().numpy()
-            clf_constraint = -(Lf_V_np + Lg_V_np * u + 0.5 * V_np - 3)
+            clf_constraint = -(Lf_V_np + Lg_V_np * u + 0.5 * V_np - 0.1)
             if allow_relaxation:
                 clf_constraint -= r[0]
             model.addConstr(clf_constraint <= 0.0, name=f"Scenario {0} Decrease")

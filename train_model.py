@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import torch
 from torch import nn
 import pytorch_lightning as pl
-
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 from matplotlib import cm
 from matplotlib.ticker import LinearLocator
@@ -15,14 +15,15 @@ from DataModule import DataModule
 # h = torch.load("h.pt")
 
 
-data_module = DataModule(system=car1, train_batch_size=64, test_batch_size=128, train_grid_gap=0.01, test_grid_gap=0.005)
+data_module = DataModule(system=car1, val_split=0.15, train_batch_size=64, test_batch_size=128, train_grid_gap=0.05, test_grid_gap=0.01)
 
 NN = NeuralNetwork(dynamic_system=car1, data_module=data_module, learn_shape_epochs=0)
 
 trainer = pl.Trainer(
     accelerator = "gpu",
     devices = 1,
-    max_epochs=100
+    max_epochs=1000,
+    callbacks=[ EarlyStopping(monitor="Total loss / val", mode="min") ], 
     )
 
 torch.autograd.set_detect_anomaly(True)

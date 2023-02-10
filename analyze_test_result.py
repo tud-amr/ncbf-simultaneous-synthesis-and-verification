@@ -32,12 +32,12 @@ loss_df = pd.DataFrame( {'epoch_num': np.squeeze(epoch_num, axis=1) ,'loss': np.
 # Apply the default theme
 sns.set_theme()
 
-# plt.figure()
-# sns.relplot(
-#     data=loss_df, kind="line",
-#     x="epoch_num", y="loss", hue="train_or_val",
-# )
-# plt.title("loss curve")
+plt.figure()
+sns.relplot(
+    data=loss_df, kind="line",
+    x="epoch_num", y="loss", hue="train_or_val",
+)
+plt.title("loss curve")
 
 
 
@@ -97,6 +97,18 @@ plt.scatter(x_neg, u_neg, s=10, c='r', label="unsafe set")
 plt.title("h shape")
 plt.legend(bbox_to_anchor=(1, 1.1),loc='upper right')
 
+
+
+
+fig1,ax1=plt.subplots(1,1)
+cp = ax1.contourf(X.reshape((int(np.sqrt(X.shape[0])), -1)), U.reshape((int(np.sqrt(X.shape[0])), -1)), H.reshape((int(np.sqrt(X.shape[0])), -1)))
+fig1.colorbar(cp) # Add a colorbar to a plot
+ax1.set_title('Filled Contours Plot')
+ax1.set_xlabel('x')
+ax1.set_ylabel('u')
+ax1.set_title("the color map of barrier function on x-u 2D plain")
+
+
 ####################### plot safe violation point #####################
 # create safe_violation data_frame
 
@@ -108,9 +120,9 @@ print(f"there are {X_safe_vio.shape[0]} point violate safe reagion")
 s_safe_violation_df = pd.DataFrame({"x": X_safe_vio, "u": U_safe_vio}, index=range(0, X_safe_vio.shape[0]))
 
 
-plt.figure()
-sns.scatterplot(data=s_safe_violation_df, x="x", y="u", marker="X")
-plt.title("safe violation states")
+# plt.figure()
+# sns.scatterplot(data=s_safe_violation_df, x="x", y="u", marker="X")
+# plt.title("safe violation states")
 
 ######################## plot unsafe violation points ##########################
 # create unsafe_violation data_frame
@@ -123,9 +135,9 @@ print(f"there are {X_unsafe_vio.shape[0]} point violate safe reagion")
 s_unsafe_violation_df = pd.DataFrame({"x": X_unsafe_vio, "u": U_unsafe_vio}, index=range(0, X_unsafe_vio.shape[0]))
 
 
-plt.figure()
-sns.scatterplot(data=s_safe_violation_df, x="x", y="u", marker="X")
-plt.title("unsafe violation states")
+# plt.figure()
+# sns.scatterplot(data=s_safe_violation_df, x="x", y="u", marker="X")
+# plt.title("unsafe violation states")
 
 
 ########################## plot descent violation points #####################
@@ -140,9 +152,9 @@ print(f"there are {X_descent.shape[0]} points violate descent condition")
 # descent_violation_df = pd.DataFrame({"x": X_descent, "u": U_descent}, index=range(0, X_descent.shape[0]))
 # fig, ax = plt.subplots()
 # sns.scatterplot(data=descent_violation_df, x="x", y="u", marker="X", ax=ax)
-plt.figure()
-plt.scatter(X_descent, U_descent, s=10, c='y')
-plt.title("descent violation states")
+# plt.figure()
+# plt.scatter(X_descent, U_descent, s=10, c='y')
+# plt.title("descent violation states")
 # ax.set_xlim(-2, 2)
 # ax.set_ylim(-2, 2)
 
@@ -213,13 +225,6 @@ plt.show()
 
 # #H_b = (H >= 0)
 
-# def f(x):
-#     return x**2*np.exp(-x**2)
-# x = np.linspace ( start = 0.    # lower limit
-#                 , stop = 3      # upper limit
-#                 , num = 51      # generate 51 points between 0 and 3
-#                 )
-# y = f(x)    # This is already vectorized, that is, y will be a vector!
 
 # fig1,ax1=plt.subplots(1,1)
 # cp = ax1.contourf(X, U, H)

@@ -11,20 +11,20 @@ import matplotlib.pyplot as plt
 h = torch.load("NN.pt")
 
 car1.set_barrier_function(h)
-
+car1.dt = 0.0005
 
 
 s0 = torch.tensor([0.0, 0], dtype=torch.float).reshape((1,2))
 
 t = 0
-dt = 0.1
+dt = car1.dt
 t_record = []
 s_record = []
 u_record = []
 u_ref_record = []
 h_record = []
 
-N_steps = 600
+N_steps = 12000
 
 s = s0
 hs_0 , _ =h(s)
@@ -38,10 +38,11 @@ try:
         h_record.append(hs.item())
 
         # u_ref = torch.rand(1,1, dtype=torch.float)*4 - torch.tensor([2], dtype=torch.float).reshape((1,1))
-        u_ref = torch.tensor([0.6], dtype=torch.float).reshape((1,1))
+        u_ref = torch.tensor([2], dtype=torch.float).reshape((1,1))
         u_result, r_result = car1.solve_CLF_QP(s, u_ref)
         assert not(r_result > 0.0), f"not feasible!!!!!!"
-
+        if u_result == 1.0:
+            car1.solve_CLF_QP(s, u_ref)
         s_next = car1.step(s, u_result)
 
         t = t + dt

@@ -229,7 +229,7 @@ class NeuralNetwork(pl.LightningModule):
         returns:
             loss: a list of tuples containing ("category_name", loss_value).
         """
-        eps = 1
+        eps = 0.1
         loss = []
 
         s_feasible = s[torch.logical_not(unsafe_mask)]
@@ -449,16 +449,17 @@ class NeuralNetwork(pl.LightningModule):
             avg_losses[key] = torch.nansum(key_losses) / key_losses.shape[0]
 
         # Log the overall loss...
-        self.log("Total loss / train", avg_losses["loss"], sync_dist=True)
-        print(f"\n the overall loss of this training epoch {avg_losses['loss']}\n")
-        self.train_loss.append(avg_losses['loss'])
-        # And all component losses
-        for loss_key in avg_losses.keys():
-            # We already logged overall loss, so skip that here
-            if loss_key == "loss":
-                continue
-            # Log the other losses
-            self.log(loss_key + " / train", avg_losses[loss_key], sync_dist=True)
+        if self.current_epoch > self.learn_shape_epochs:
+            self.log("Total loss / train", avg_losses["loss"], sync_dist=True)
+            print(f"\n the overall loss of this training epoch {avg_losses['loss']}\n")
+            self.train_loss.append(avg_losses['loss'])
+            # And all component losses
+            for loss_key in avg_losses.keys():
+                # We already logged overall loss, so skip that here
+                if loss_key == "loss":
+                    continue
+                # Log the other losses
+                self.log(loss_key + " / train", avg_losses[loss_key], sync_dist=True)
 
 
     def validation_step(self, batch, batch_idx):
@@ -469,11 +470,11 @@ class NeuralNetwork(pl.LightningModule):
         # Get the various losses
         component_losses = {}
         component_losses.update(
-            self.boundary_loss(x, safe_mask, unsafe_mask)
+            self.boundary_loss(x, safe_mask, unsafe_mask, accuracy=True)
         )
         if self.current_epoch > self.learn_shape_epochs:
             component_losses.update(
-                self.descent_loss(x, safe_mask, unsafe_mask)
+                self.descent_loss(x, safe_mask, unsafe_mask, accuracy=True)
             )
 
         # Compute the overall loss by summing up the individual losses
@@ -517,17 +518,21 @@ class NeuralNetwork(pl.LightningModule):
             avg_losses[key] = torch.nansum(key_losses) / key_losses.shape[0]
 
         # Log the overall loss...
-        self.log("Total loss / val", avg_losses["val_loss"], sync_dist=True)
-        print(f"\n the overall loss of this validation epoch {avg_losses['val_loss']}\n")
-        self.val_loss.append(avg_losses['val_loss'])
-        # And all component losses
-        for loss_key in avg_losses.keys():
-            # We already logged overall loss, so skip that here
-            if loss_key == "val_loss":
-                continue
-            # Log the other losses
-            self.log(loss_key + " / val", avg_losses[loss_key], sync_dist=True)
-
+        if self.current_epoch > self.learn_shape_epochs:
+            self.log("Total loss / val", avg_losses["val_loss"], sync_dist=True)
+            print(f"\n the overall loss of this validation epoch {avg_losses['val_loss']}\n")
+            print(f"\n the descent accuracy of this validation epoch {avg_losses['CLBF descent accuracy (linearized)']}\n")
+            
+            self.val_loss.append(avg_losses['val_loss'])
+            # And all component losses
+            for loss_key in avg_losses.keys():
+                # We already logged overall loss, so skip that here
+                if loss_key == "val_loss":
+                    continue
+                # Log the other losses
+                self.log(loss_key + " / val", avg_losses[loss_key], sync_dist=True)
+        else:
+            self.log("Total loss / val", 10, sync_dist=True)
         # **Now entering spicetacular automation zone**
         # We automatically run experiments every few epochs
 
