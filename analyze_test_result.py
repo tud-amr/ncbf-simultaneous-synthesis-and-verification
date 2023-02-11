@@ -1,4 +1,5 @@
 import numpy as np
+import math
 import matplotlib.pyplot as plt
 import torch
 from torch import nn
@@ -7,37 +8,38 @@ import seaborn as sns
 import pandas as pd
 
 from MyNeuralNetwork import *
-from CARs import car1
+from dynamic_system_instances import car1, inverted_pendulum_1
 from DataModule import DataModule
 
 ##################### draw loss curve #######################
 
 test_results = torch.load("test_results.pt")
-NN = torch.load("NN.pt")
 
-train_epoch_loss = [ loss.cpu().item() for loss in NN.train_loss ]
-val_epoch_loss =  [ loss.cpu().item() for loss in NN.val_loss ]
-train_epoch_loss = np.array(train_epoch_loss)[1:-1].reshape((-1,1))
-val_epoch_loss = np.array(val_epoch_loss)[1:-1].reshape((-1,1))
+# NN = NeuralNetwork.load_from_checkpoint("./masterthesis_test/lightning_logs/version_0/checkpoints/epoch=9-step=220.ckpt")
 
-train_or_val = np.array(["train_loss" for i in train_epoch_loss] + ["val_loss" for i in val_epoch_loss])
-loss = np.vstack(( train_epoch_loss, val_epoch_loss ) )
-epoch_num = np.vstack((np.arange(0, train_epoch_loss.shape[0]).reshape((-1,1)), np.arange(0, val_epoch_loss.shape[0]).reshape((-1,1)) ))
+# train_epoch_loss = [ loss.cpu().item() for loss in NN.train_loss ]
+# val_epoch_loss =  [ loss.cpu().item() for loss in NN.val_loss ]
+# train_epoch_loss = np.array(train_epoch_loss)[1:-1].reshape((-1,1))
+# val_epoch_loss = np.array(val_epoch_loss)[1:-1].reshape((-1,1))
+
+# train_or_val = np.array(["train_loss" for i in train_epoch_loss] + ["val_loss" for i in val_epoch_loss])
+# loss = np.vstack(( train_epoch_loss, val_epoch_loss ) )
+# epoch_num = np.vstack((np.arange(0, train_epoch_loss.shape[0]).reshape((-1,1)), np.arange(0, val_epoch_loss.shape[0]).reshape((-1,1)) ))
 
 
 
-# create data_frame 
-loss_df = pd.DataFrame( {'epoch_num': np.squeeze(epoch_num, axis=1) ,'loss': np.squeeze(loss, axis=1), 'train_or_val': train_or_val}, index=range(0, epoch_num.shape[0]) )
+# # create data_frame 
+# loss_df = pd.DataFrame( {'epoch_num': np.squeeze(epoch_num, axis=1) ,'loss': np.squeeze(loss, axis=1), 'train_or_val': train_or_val}, index=range(0, epoch_num.shape[0]) )
 
-# Apply the default theme
-sns.set_theme()
+# # Apply the default theme
+# sns.set_theme()
 
-plt.figure()
-sns.relplot(
-    data=loss_df, kind="line",
-    x="epoch_num", y="loss", hue="train_or_val",
-)
-plt.title("loss curve")
+# plt.figure()
+# sns.relplot(
+#     data=loss_df, kind="line",
+#     x="epoch_num", y="loss", hue="train_or_val",
+# )
+# plt.title("loss curve")
 
 
 
@@ -99,9 +101,8 @@ plt.legend(bbox_to_anchor=(1, 1.1),loc='upper right')
 
 
 
-
 fig1,ax1=plt.subplots(1,1)
-cp = ax1.contourf(X.reshape((int(np.sqrt(X.shape[0])), -1)), U.reshape((int(np.sqrt(X.shape[0])), -1)), H.reshape((int(np.sqrt(X.shape[0])), -1)))
+cp = ax1.contourf(X.reshape((math.gcd(X.shape[0], 1000), -1)), U.reshape((math.gcd(X.shape[0], 1000), -1)), H.reshape((math.gcd(X.shape[0], 1000), -1)))
 fig1.colorbar(cp) # Add a colorbar to a plot
 ax1.set_title('Filled Contours Plot')
 ax1.set_xlabel('x')

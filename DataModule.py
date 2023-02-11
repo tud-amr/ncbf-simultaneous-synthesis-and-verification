@@ -3,13 +3,13 @@ from typing import List, Callable, Tuple, Dict, Optional
 import torch
 import pytorch_lightning as pl
 from torch.utils.data import TensorDataset, DataLoader
-from CARs import car1
-from system import Car
+from dynamic_system_instances import car1, inverted_pendulum_1
+from control_affine_system import ControlAffineSystem
 
 class DataModule(pl.LightningDataModule):
     def __init__(
         self,
-        system: Car,
+        system: ControlAffineSystem,
         training_sample_num: int = 10000,
         val_split: float = 0.1,
         train_batch_size: int = 64,
@@ -59,14 +59,14 @@ class DataModule(pl.LightningDataModule):
         self.s_validation = s_samples[validation_indices]
         self.s_testing = test_sample
         
-        self.safe_mask_training = self.s_training.norm(dim=-1) <= 0.6
-        self.unsafe_mask_training = self.s_training.norm(dim=-1) >= 1.2#self.system.unsafe_mask(self.s_training)
+        self.safe_mask_training = self.system.safe_mask(self.s_training)  # self.s_training.norm(dim=-1) <= 0.6
+        self.unsafe_mask_training = self.system.unsafe_mask(self.s_training)
         
-        self.safe_mask_validation = self.s_validation.norm(dim=-1) <= 0.6
-        self.unsafe_mask_validation = self.s_validation.norm(dim=-1) >= 1.2 #self.system.unsafe_mask(self.s_validation)
+        self.safe_mask_validation =  self.system.safe_mask(self.s_validation) # self.s_validation.norm(dim=-1) <= 0.6
+        self.unsafe_mask_validation = self.system.unsafe_mask(self.s_validation)
 
-        self.safe_mask_testing = self.s_testing.norm(dim=-1) <= 0.6
-        self.unsafe_mask_testing = self.s_testing.norm(dim=-1) >= 1.2 #self.system.unsafe_mask(self.s_training)
+        self.safe_mask_testing =  self.system.safe_mask(self.s_testing) # self.s_testing.norm(dim=-1) <= 0.6
+        self.unsafe_mask_testing = self.system.unsafe_mask(self.s_testing)
 
         print("Full dataset:")
         print(f"\t{self.s_training.shape[0]} training")
@@ -130,6 +130,6 @@ class DataModule(pl.LightningDataModule):
         
 if __name__ == "__main__":
     
-    data_module = DataModule(system=car1, train_grid_gap=0.01, test_grid_gap=0.1)
+    data_module = DataModule(system=inverted_pendulum_1, train_grid_gap=0.1, test_grid_gap=0.01)
 
     data_module.prepare_data()

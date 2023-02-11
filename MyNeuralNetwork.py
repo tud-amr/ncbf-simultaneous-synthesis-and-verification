@@ -9,12 +9,19 @@ from torch import nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
 
+import cvxpy as cp
+from cvxpylayers.torch import CvxpyLayer
+import gurobipy as gp
+from gurobipy import GRB
+
 from matplotlib import cm
 from matplotlib.ticker import LinearLocator
 import matplotlib.pyplot as plt
 
 from DataModule import DataModule
-from system import Car
+from control_affine_system import ControlAffineSystem
+
+from dynamic_system_instances import car1, inverted_pendulum_1
 
 ######################### define neural network #########################
 
@@ -22,15 +29,16 @@ from system import Car
 class NeuralNetwork(pl.LightningModule):
     def __init__(
         self,
-        dynamic_system: Car,
+        dynamic_system: ControlAffineSystem,
         data_module: DataModule,
         learn_shape_epochs: int = 10,
         primal_learning_rate: float = 1e-3,
-        gamma: float = 0.9
+        gamma: float = 0.9,
+        clf_lambda: float = 1.0,
+        clf_relaxation_penalty: float = 50.0,
         ):
 
         super(NeuralNetwork, self).__init__()
-        
         self.dynamic_system = dynamic_system
         self.data_module = data_module
         self.learn_shape_epochs = learn_shape_epochs
@@ -47,20 +55,18 @@ class NeuralNetwork(pl.LightningModule):
             nn.ReLU(),
             nn.Linear(16,1)
         )
-        self.V = nn.Sequential(
-            nn.Linear(2, 48),
-            nn.ReLU(),
-            nn.Linear(48, 32),
-            nn.ReLU(),
-            nn.Linear(32, 8),
-            nn.ReLU(),
-            nn.Linear(8,1)
-        )
+        
         u_lower, u_upper = self.dynamic_system.control_limits
         self.u_v =[u_lower.item(), u_upper.item()]
         self.train_loss = []
         self.val_loss = []
+        
+        self.K = self.dynamic_system.K
+        self.clf_lambda = clf_lambda
+        self.clf_relaxation_penalty = clf_relaxation_penalty
 
+        self.generate_cvx_solver()
+    
     def prepare_data(self):
         return self.data_module.prepare_data()
 
@@ -78,15 +84,8 @@ class NeuralNetwork(pl.LightningModule):
 
     def forward(self, s):
         hs = self.h(s)
-        Vs = self.V(s)
-        # print(Vs.shape)
-        # print(h_bar_s.shape)
-        # print(beta_s.shape)
-        
-        # print(torch.norm(Vs, dim=1).reshape(-1,1))
-        # print(torch.norm(beta_s, dim=1).reshape(-1,1))
 
-        return hs, Vs
+        return hs
 
     def V_with_jacobian(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Computes the CLBF value and its Jacobian
@@ -229,20 +228,397 @@ class NeuralNetwork(pl.LightningModule):
         returns:
             loss: a list of tuples containing ("category_name", loss_value).
         """
-        eps = 0.1
         loss = []
-
-        s_feasible = s[torch.logical_not(unsafe_mask)]
-
-        descent_loss, self.u_star_index = self.gradient_descent_violation(s_feasible, self.u_v)
-        descent_loss =  F.relu(eps - descent_loss)
-        descent_loss_mean = descent_loss.mean()
-        loss.append(("descent loss", descent_loss_mean))
-        if accuracy:
-            descent_loss_acc = (descent_loss > eps).sum()/(descent_loss.nelement())
-            loss.append(("CLBF descent accuracy (linearized)", descent_loss_acc))
         
+        # The CLBF decrease condition requires that V is decreasing everywhere where
+        # V <= safe_level. We'll encourage this in three ways:
+        #
+        #   1) Minimize the relaxation needed to make the QP feasible.
+        #   2) Compute the CLBF decrease at each point by linearizing
+        #   3) Compute the CLBF decrease at each point by simulating
+
+        # First figure out where this condition needs to hold
+        eps = 0.1
+        H = self.h(s)
+        condition_active = torch.sigmoid(10 * (1.0 + eps - H))
+ 
+
+    
+        u_qp, qp_relaxation = self.solve_CLF_QP(s, requires_grad=False)
+        qp_relaxation = torch.mean(qp_relaxation, dim=-1)
+
+        # Minimize the qp relaxation to encourage satisfying the decrease condition
+        qp_relaxation_loss = qp_relaxation.mean()
+        # loss.append(("QP relaxation", qp_relaxation_loss))
+
+        # Now compute the decrease using linearization
+        eps = 1.0
+        clbf_descent_term_lin = torch.tensor(0.0).type_as(s)
+        clbf_descent_acc_lin = torch.tensor(0.0).type_as(s)
+        # Get the current value of the CLBF and its Lie derivatives
+        Lf_V, Lg_V = self.V_lie_derivatives(s)
+    
+        # Use the dynamics to compute the derivative of V
+        Vdot = Lf_V[:, :].unsqueeze(1) + torch.bmm(
+            Lg_V[:, :].unsqueeze(1),
+            u_qp.reshape(-1, self.dynamic_system.nu, 1),
+        )
+        Vdot = Vdot.reshape(H.shape)
+        violation = F.relu(eps - (Vdot + self.clf_lambda * H))
+        violation = violation * condition_active
+        clbf_descent_term_lin = clbf_descent_term_lin + violation.mean()
+        clbf_descent_acc_lin = clbf_descent_acc_lin + (violation >= eps).sum() / (
+            violation.nelement()
+        )
+
+        loss.append(("CLBF descent term (linearized)", clbf_descent_term_lin))
+        if accuracy:
+            loss.append(("CLBF descent accuracy (linearized)", clbf_descent_acc_lin))
+
+
+        # Now compute the decrease using simulation
+        eps = 1.0
+        clbf_descent_term_sim = torch.tensor(0.0).type_as(s)
+        clbf_descent_acc_sim = torch.tensor(0.0).type_as(s)
+       
+        # xdot = self.dynamics_model.closed_loop_dynamics(x, u_qp, params=s)
+
+        x_next = self.dynamic_system.step(s, u_qp)
+        H_next = self.h(x_next)
+        violation = F.relu(
+            eps - ((H_next - H) / self.dynamic_system.dt + self.clf_lambda * H)
+        )
+        violation = violation * condition_active
+
+        clbf_descent_term_sim = clbf_descent_term_sim + violation.mean()
+        clbf_descent_acc_sim = clbf_descent_acc_sim + (violation >= eps).sum() / (
+            violation.nelement() 
+        )
+
+        loss.append(("CLBF descent term (simulated)", clbf_descent_term_sim))
+        if accuracy:
+            loss.append(("CLBF descent accuracy (simulated)", clbf_descent_acc_sim))
+
+
         return loss
+
+
+    def V_lie_derivatives(
+        self, x: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Compute the Lie derivatives of the CLF V along the control-affine dynamics
+
+        args:
+            x: bs x self.dynamics_model.n_dims tensor of state
+            
+        returns:
+            Lf_V: bs x len(scenarios) x 1 tensor of Lie derivatives of V
+                  along f
+            Lg_V: bs x len(scenarios) x self.dynamics_model.n_controls tensor
+                  of Lie derivatives of V along g
+        """
+
+        # Get the Jacobian of V for each entry in the batch
+        _, gradh = self.V_with_jacobian(x)
+        # print(f"gradh shape is {gradh.shape}")
+        # We need to compute Lie derivatives for each scenario
+        batch_size = x.shape[0]
+        Lf_V = torch.zeros(batch_size, 2, 1)
+        Lg_V = torch.zeros(batch_size, 2, 1)
+
+        f = self.dynamic_system.f(x)
+        g = self.dynamic_system.g(x)
+        # print(f"f shape is {f.shape}")
+        # print(f"g shape is {g.shape}")
+
+        Lf_V = torch.bmm(gradh, f.unsqueeze(dim=-1)).squeeze(1)
+        Lg_V = torch.bmm(gradh, g).squeeze(1)
+        # print(f"Lf_V shape is {Lf_V.shape}")
+        # print(f"Lg_V shape is {Lg_V.shape}")
+        
+        return Lf_V, Lg_V
+
+    def generate_cvx_solver(self):
+        # Save the other parameters
+        
+
+        # Since we want to be able to solve the CLF-QP differentiably, we need to set
+        # up the CVXPyLayers optimization. First, we define variables for each control
+        # input and the relaxation in each scenario
+        u = cp.Variable(self.dynamic_system.nu)
+        clf_relaxations = []
+        
+        clf_relaxations.append(cp.Variable(1, nonneg=True))
+
+        # Next, we define the parameters that will be supplied at solve-time: the value
+        # of the Lyapunov function, its Lie derivatives, the relaxation penalty, and
+        # the reference control input   
+        V_param = cp.Parameter(1, nonneg=True)
+        Lf_V_params = []
+        Lg_V_params = []
+        
+        Lf_V_params.append(cp.Parameter(1))
+        Lg_V_params.append(cp.Parameter(self.dynamic_system.nu))
+
+        clf_relaxation_penalty_param = cp.Parameter(1, nonneg=True)
+        u_ref_param = cp.Parameter(self.dynamic_system.nu)
+
+
+        # These allow us to define the constraints
+        constraints = []
+        
+        # CLF decrease constraint (with relaxation)
+        constraints.append(
+            Lf_V_params[0]
+            + Lg_V_params[0] @ u
+            + self.clf_lambda * V_param
+            - clf_relaxations[0]
+            <= 0
+        )
+
+
+        # Control limit constraints
+        lower_lim,  upper_lim  = self.dynamic_system.control_limits
+        for control_idx in range(self.dynamic_system.nu):
+            constraints.append(u[control_idx] >= lower_lim[control_idx])
+            constraints.append(u[control_idx] <= upper_lim[control_idx])
+
+
+        # And define the objective
+        objective_expression = cp.sum_squares(u - u_ref_param)
+        for r in clf_relaxations:
+            objective_expression += cp.multiply(clf_relaxation_penalty_param, r)
+        objective = cp.Minimize(objective_expression)
+
+        problem = cp.Problem(objective, constraints)
+        assert problem.is_dpp()
+        variables = [u] + clf_relaxations
+        parameters = Lf_V_params + Lg_V_params
+        parameters += [V_param, u_ref_param, clf_relaxation_penalty_param]
+        self.differentiable_qp_solver = CvxpyLayer(
+            problem, variables=variables, parameters=parameters
+        )
+
+
+    def _solve_CLF_QP_cvxpylayers(
+        self,
+        x: torch.Tensor,
+        u_ref: torch.Tensor,
+        V: torch.Tensor,
+        Lf_V: torch.Tensor,
+        Lg_V: torch.Tensor,
+        relaxation_penalty: float,
+        epsilon : float = 0.1,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Determine the control input for a given state using a QP. Solves the QP using
+        CVXPyLayers, which does allow for backpropagation, but is slower and less
+        accurate than Gurobi.
+
+        args:
+            x: bs x self.dynamics_model.n_dims tensor of state
+            u_ref: bs x self.dynamics_model.n_controls tensor of reference controls
+            V: bs x 1 tensor of CLF values,
+            Lf_V: bs x 1 tensor of CLF Lie derivatives,
+            Lg_V: bs x self.dynamics_model.n_controls tensor of CLF Lie derivatives,
+            relaxation_penalty: the penalty to use for CLF relaxation.
+        returns:
+            u: bs x self.dynamics_model.n_controls tensor of control inputs
+            relaxation: bs x 1 tensor of how much the CLF had to be relaxed in each
+                        case
+        """
+        # The differentiable solver must allow relaxation
+        relaxation_penalty = min(relaxation_penalty, 1e6)
+
+        # Assemble list of params
+        self.n_scenarios = 1
+        params = []
+        for i in range(self.n_scenarios):
+            params.append(Lf_V[:, :])
+        for i in range(self.n_scenarios):
+            params.append(Lg_V[:, :])
+        params.append(V.reshape(-1, 1))
+        params.append(u_ref)
+        params.append(torch.tensor([relaxation_penalty]).type_as(x))
+
+        # We've already created a parameterized QP solver, so we can use that
+        result = self.differentiable_qp_solver(
+            *params,
+            solver_args={"max_iters": 50000000},
+        )
+
+        # Extract the results
+        u_result = result[0]
+        r_result = torch.hstack(result[1:])
+
+        return u_result.type_as(x), r_result.type_as(x)
+
+
+    def solve_CLF_QP(
+        self,
+        x,
+        u_ref: Optional[torch.Tensor] = None,
+        relaxation_penalty: Optional[float] = 1000,
+        requires_grad: bool = False,
+        epsilon: float = 0.1,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Determine the control input for a given state using a QP
+
+        args:
+            x: bs x self.dynamics_model.n_dims tensor of state
+            relaxation_penalty: the penalty to use for CLF relaxation, defaults to
+                                self.clf_relaxation_penalty
+            u_ref: allows the user to supply a custom reference input, which will
+                   bypass the self.u_reference function. If provided, must have
+                   dimensions bs x self.dynamics_model.n_controls. If not provided,
+                   default to calling self.u_reference.
+            requires_grad: if True, use a differentiable layer
+        returns:
+            u: bs x self.dynamics_model.n_controls tensor of control inputs
+            relaxation: bs x 1 tensor of how much the CLF had to be relaxed in each
+                        case
+        """
+        # Get the value of the CLF and its Lie derivatives
+        H = self.h(x)
+        Lf_V, Lg_V = self.V_lie_derivatives(x)
+
+        # Get the reference control input as well
+        if u_ref is not None:
+            err_message = f"u_ref must have {x.shape[0]} rows, but got {u_ref.shape[0]}"
+            assert u_ref.shape[0] == x.shape[0], err_message
+            err_message = f"u_ref must have {1} cols,"
+            err_message += f" but got {u_ref.shape[1]}"
+            assert u_ref.shape[1] == 1, err_message
+        else:
+            u_ref = self.nominal_controller(x)
+            err_message = f"u_ref shouldn't be None!!!!"
+            assert u_ref is not None, err_message
+        
+        if requires_grad:
+            return self._solve_CLF_QP_cvxpylayers(
+                x, u_ref, H, Lf_V, Lg_V, relaxation_penalty, epsilon=epsilon
+            )
+        else:
+            return self._solve_CLF_QP_gurobi(
+            x, u_ref, H, Lf_V, Lg_V, relaxation_penalty, epsilon=epsilon
+        )
+    
+
+    def _solve_CLF_QP_gurobi(
+        self,
+        x: torch.Tensor,
+        u_ref: torch.Tensor,
+        V: torch.Tensor,
+        Lf_V: torch.Tensor,
+        Lg_V: torch.Tensor,
+        relaxation_penalty: float,
+        epsilon : float = 0.1,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Determine the control input for a given state using a QP. Solves the QP using
+        Gurobi, which does not allow for backpropagation.
+
+        args:
+            x: bs x self.dynamics_model.n_dims tensor of state
+            u_ref: bs x self.dynamics_model.n_controls tensor of reference controls
+            V: bs x 1 tensor of CLF values,
+            Lf_V: bs x 1 tensor of CLF Lie derivatives,
+            Lg_V: bs x self.dynamics_model.n_controls tensor of CLF Lie derivatives,
+            relaxation_penalty: the penalty to use for CLF relaxation.
+        returns:
+            u: bs x self.dynamics_model.n_controls tensor of control inputs
+            relaxation: bs x 1 tensor of how much the CLF had to be relaxed in each
+                        case
+        """
+        # To find the control input, we want to solve a QP constrained by
+        #
+        # -(L_f V + L_g V u + lambda V) <= 0
+        #
+        # To ensure that this QP is always feasible, we relax the constraint
+        #
+        #  -(L_f V + L_g V u + lambda V) - r <= 0
+        #                              r >= 0
+        #
+        # and add the cost term relaxation_penalty * r.
+        #
+        # We want the objective to be to minimize
+        #
+        #           ||u||^2 + relaxation_penalty * r^2
+        #
+        # This reduces to (ignoring constant terms)
+        #
+        #           u^T I u + relaxation_penalty * r^2
+
+        n_controls = 1
+        
+        allow_relaxation = not (relaxation_penalty == float("inf"))
+
+        # Solve a QP for each row in x
+        bs = x.shape[0]
+        u_result = torch.zeros(bs, n_controls)
+        r_result = torch.zeros(bs, 1)
+        for batch_idx in range(bs):
+            # Skip any bad points
+            if (
+                torch.isnan(x[batch_idx]).any()
+                or torch.isinf(x[batch_idx]).any()
+                or torch.isnan(Lg_V[batch_idx]).any()
+                or torch.isinf(Lg_V[batch_idx]).any()
+                or torch.isnan(Lf_V[batch_idx]).any()
+                or torch.isinf(Lf_V[batch_idx]).any()
+            ):
+                continue
+
+            # Instantiate the model
+            model = gp.Model("clf_qp")
+            # Create variables for control input and (optionally) the relaxations
+            lower_lim, upper_lim = self.dynamic_system.control_limits
+            upper_lim = upper_lim.cpu().numpy()
+            lower_lim = lower_lim.cpu().numpy()
+            u = model.addMVar(n_controls, lb=lower_lim, ub=upper_lim)
+            if allow_relaxation:
+                r = model.addMVar(1, lb=0, ub=GRB.INFINITY)
+
+            # Define the cost
+            Q = np.eye(n_controls)
+            u_ref_np = u_ref[batch_idx, :].detach().cpu().numpy()
+            objective = u @ Q @ u - 2 * u_ref_np @ Q @ u + u_ref_np @ Q @ u_ref_np
+            if allow_relaxation:
+                relax_penalties = relaxation_penalty * np.ones(1)
+                objective += relax_penalties @ r
+
+            # Now build the CLF constraints
+        
+            Lg_V_np = Lg_V[batch_idx, 0].detach().cpu().numpy()
+            Lf_V_np = Lf_V[batch_idx, 0].detach().cpu().numpy()
+            V_np = V[batch_idx, 0].detach().cpu().numpy()
+            clf_constraint = -(Lf_V_np + Lg_V_np * u + 0.5 * V_np - epsilon)
+            if allow_relaxation:
+                clf_constraint -= r[0]
+            model.addConstr(clf_constraint <= 0.0, name=f"Scenario {0} Decrease")
+
+            # Optimize!
+            model.setParam("DualReductions", 0)
+            model.setObjective(objective, GRB.MINIMIZE)
+            model.optimize()
+
+            if model.status != GRB.OPTIMAL:
+                # Make the relaxations nan if the problem was infeasible, as a signal
+                # that something has gone wrong
+                if allow_relaxation:
+                    for i in range(1):
+                        r_result[batch_idx, i] = torch.tensor(float("nan"))
+                continue
+
+            # Extract the results
+            for i in range(n_controls):
+                u_result[batch_idx, i] = torch.tensor(u[i].x)
+            if allow_relaxation:
+                for i in range(0):
+                    r_result[batch_idx, i] = torch.tensor(r[i].x)
+
+        return u_result.type_as(x), r_result.type_as(x)
+
+
+
 
     def V_loss(self, 
         s: torch.Tensor,
@@ -329,19 +705,6 @@ class NeuralNetwork(pl.LightningModule):
         
         return loss
 
-    def test_loss(self, 
-        s: torch.Tensor,
-        safe_mask: torch.Tensor,
-        unsafe_mask: torch.Tensor
-        ):
-        hs = self.h(s)
-        loss = []
-        test_loss = torch.pow(hs - 1, 2)
-        test_loss_mean = torch.mean(test_loss)
-        loss.append(("test loss", test_loss_mean))
-        
-        return loss
-
     def Dt(self, s, u_vi):
         Lf_h, Lg_h = self.V_lie_derivatives(s)
 
@@ -355,14 +718,11 @@ class NeuralNetwork(pl.LightningModule):
         
         return result
 
-    def gradient_descent_violation(self, s, u_v):
+    def gradient_descent_violation(self, s, u_pi):
         
-        c_list = [self.gradient_descent_condition(s, u) for u in u_v]
-        c_list = torch.hstack(c_list)
+        violation = self.gradient_descent_condition(s, u_pi)
         
-        violation_max, u_max_index = torch.max(c_list, dim=1) 
-
-        return violation_max, u_max_index
+        return violation
 
 
     def normalize(
@@ -385,7 +745,17 @@ class NeuralNetwork(pl.LightningModule):
         # Do the normalization
         return (x - x_center.type_as(x)) / x_range.type_as(x)
 
-    
+    def nominal_controller(self, s):
+        batch_size = s.shape[0]
+
+        K = torch.ones(batch_size, self.dynamic_system.nu, self.dynamic_system.ns) * torch.unsqueeze(self.K, dim=0)
+        K = K.to(s.device)
+
+        u = -torch.bmm(K, s.unsqueeze(dim=-1))
+        # u_lower_bd ,  u_upper_bd = self.dynamic_system.control_limits
+        # u = torch.clip(u, u_lower_bd.to(s.device), u_upper_bd.to(s.device))
+        return u.squeeze(dim=-1)
+
     def training_step(self, batch, batch_idx):
         """Conduct the training step for the given batch"""
         # Extract the input and masks from the batch
@@ -394,13 +764,13 @@ class NeuralNetwork(pl.LightningModule):
         # Compute the losses
         component_losses = {}
         component_losses.update(
-            self.boundary_loss(x, safe_mask, unsafe_mask, accuracy=True)
+            self.boundary_loss(x, safe_mask, unsafe_mask)
         )
 
         if self.current_epoch > self.learn_shape_epochs:
             component_losses.update(
                 self.descent_loss(
-                    x, safe_mask, unsafe_mask, accuracy=True,requires_grad=True
+                    x, safe_mask, unsafe_mask,requires_grad=False
                 )
             )
             # component_losses.update(
@@ -584,7 +954,10 @@ class NeuralNetwork(pl.LightningModule):
         batch_dict["unsafe_violation"]["val"] = h_s_safe_violation
 
         # record descent_violation
-        descent_violation, u_star_index = self.gradient_descent_violation(x, self.u_v)
+        c_list = [ self.gradient_descent_violation(x, u_i) for u_i in self.u_v ]
+        c_list = torch.hstack(c_list)
+
+        descent_violation, u_star_index = torch.max(c_list, dim=1)
 
         descent_violation_mask = torch.logical_and(descent_violation < 0, torch.logical_not(unsafe_mask))  
 
@@ -626,20 +999,21 @@ class NeuralNetwork(pl.LightningModule):
 
 if __name__ == "__main__":
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using {device} device")
+        
+    s0 = -torch.rand(3, 2, dtype=torch.float)
 
-    car = Car()
-    data_module = DataModule()
-    h = NeuralNetwork(dynamic_system=car, data_module=data_module).to(device)
-    s0 = torch.tensor([-1.8545, 0.2772, 2.34, -4.23], dtype=torch.float).reshape((2,2)).to(device)
-    s0.requires_grad_(True)
-    output = h(s0)
-    print(output)
-    _, gradh = h.V_with_jacobian(s0)
-    print(gradh)
-    print(gradh.shape)
+    data_module = DataModule(system=inverted_pendulum_1, train_grid_gap=0.5, test_grid_gap=0.3)
 
+    NN = NeuralNetwork(dynamic_system=inverted_pendulum_1, data_module=data_module)
+
+    NN.prepare_data()
+
+    u_nominal = NN.nominal_controller(s0)
+    NN.boundary_loss(NN.data_module.s_training, NN.data_module.safe_mask_training, NN.data_module.unsafe_mask_training, accuracy=True)
+    NN.descent_loss(NN.data_module.s_training, NN.data_module.safe_mask_training, NN.data_module.unsafe_mask_training, requires_grad=True)
+    # NN.V_loss(NN.data_module.s_training, NN.data_module.safe_mask_training, NN.data_module.unsafe_mask_training)
+
+    del NN
 
 # def myCustomLoss(h_bar_s, C_bar_s, epsilon = 0.01):
     
