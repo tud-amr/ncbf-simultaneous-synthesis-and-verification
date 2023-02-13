@@ -8,11 +8,14 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
+from torch.autograd import Variable
+from torch.nn.parameter import Parameter
 
 import cvxpy as cp
 from cvxpylayers.torch import CvxpyLayer
 import gurobipy as gp
 from gurobipy import GRB
+from qpth.qp import QPFunction
 
 from matplotlib import cm
 from matplotlib.ticker import LinearLocator
@@ -244,7 +247,14 @@ class NeuralNetwork(pl.LightningModule):
  
 
     
-        u_qp, qp_relaxation = self.solve_CLF_QP(s, requires_grad=False)
+        u_qp, qp_relaxation = self.solve_CLF_QP(s, requires_grad=requires_grad)
+        # u_qp_opt, qp_relaxation_opt = self.solve_CLF_QP(s, requires_grad=True)
+
+        # print(f"u_qp is {u_qp}")
+        # print(f"qp_relaxation is {qp_relaxation}")
+        # print(f"u_qp_opt is {u_qp_opt}")
+        # print(f"qp_relaxation_opt is {qp_relaxation_opt}")
+
         qp_relaxation = torch.mean(qp_relaxation, dim=-1)
 
         # Minimize the qp relaxation to encourage satisfying the decrease condition
@@ -494,7 +504,10 @@ class NeuralNetwork(pl.LightningModule):
             assert u_ref is not None, err_message
         
         if requires_grad:
-            return self._solve_CLF_QP_cvxpylayers(
+            # return self._solve_CLF_QP_cvxpylayers(
+            #     x, u_ref, H, Lf_V, Lg_V, relaxation_penalty, epsilon=epsilon
+            # )
+            return self._solve_CLF_QP_OptNet(
                 x, u_ref, H, Lf_V, Lg_V, relaxation_penalty, epsilon=epsilon
             )
         else:
@@ -568,57 +581,131 @@ class NeuralNetwork(pl.LightningModule):
                 continue
 
             # Instantiate the model
-            model = gp.Model("clf_qp")
-            # Create variables for control input and (optionally) the relaxations
-            lower_lim, upper_lim = self.dynamic_system.control_limits
-            upper_lim = upper_lim.cpu().numpy()
-            lower_lim = lower_lim.cpu().numpy()
-            u = model.addMVar(n_controls, lb=lower_lim, ub=upper_lim)
-            if allow_relaxation:
-                r = model.addMVar(1, lb=0, ub=GRB.INFINITY)
+            with gp.Env(empty=True) as env:
+                env.setParam('OutputFlag', 0)
+                env.start()
+                with gp.Model("clf_qp", env=env) as model:
+                    
+                    # Create variables for control input and (optionally) the relaxations
+                    lower_lim, upper_lim = self.dynamic_system.control_limits
+                    upper_lim = upper_lim.cpu().numpy()
+                    lower_lim = lower_lim.cpu().numpy()
+                    u = model.addMVar(n_controls, lb=lower_lim, ub=upper_lim)
+                    if allow_relaxation:
+                        r = model.addMVar(1, lb=0, ub=GRB.INFINITY)
 
-            # Define the cost
-            Q = np.eye(n_controls)
-            u_ref_np = u_ref[batch_idx, :].detach().cpu().numpy()
-            objective = u @ Q @ u - 2 * u_ref_np @ Q @ u + u_ref_np @ Q @ u_ref_np
-            if allow_relaxation:
-                relax_penalties = relaxation_penalty * np.ones(1)
-                objective += relax_penalties @ r
+                    # Define the cost
+                    Q = np.eye(n_controls)
+                    u_ref_np = u_ref[batch_idx, :].detach().cpu().numpy()
+                    objective = u @ Q @ u - 2 * u_ref_np @ Q @ u + u_ref_np @ Q @ u_ref_np
+                    if allow_relaxation:
+                        relax_penalties = relaxation_penalty * np.ones(1)
+                        objective += relax_penalties @ r
 
-            # Now build the CLF constraints
-        
-            Lg_V_np = Lg_V[batch_idx, 0].detach().cpu().numpy()
-            Lf_V_np = Lf_V[batch_idx, 0].detach().cpu().numpy()
-            V_np = V[batch_idx, 0].detach().cpu().numpy()
-            clf_constraint = -(Lf_V_np + Lg_V_np * u + 0.5 * V_np - epsilon)
-            if allow_relaxation:
-                clf_constraint -= r[0]
-            model.addConstr(clf_constraint <= 0.0, name=f"Scenario {0} Decrease")
+                    # Now build the CLF constraints
+                
+                    Lg_V_np = Lg_V[batch_idx, 0].detach().cpu().numpy()
+                    Lf_V_np = Lf_V[batch_idx, 0].detach().cpu().numpy()
+                    V_np = V[batch_idx, 0].detach().cpu().numpy()
+                    clf_constraint = -(Lf_V_np + Lg_V_np * u + 0.5 * V_np - epsilon)
+                    if allow_relaxation:
+                        clf_constraint -= r[0]
+                    model.addConstr(clf_constraint <= 0.0, name=f"Scenario {0} Decrease")
 
-            # Optimize!
-            model.setParam("DualReductions", 0)
-            model.setObjective(objective, GRB.MINIMIZE)
-            model.optimize()
+                    # Optimize!
+                    model.setParam("DualReductions", 0)
+                    model.setObjective(objective, GRB.MINIMIZE)
+                    model.optimize()
 
-            if model.status != GRB.OPTIMAL:
-                # Make the relaxations nan if the problem was infeasible, as a signal
-                # that something has gone wrong
-                if allow_relaxation:
-                    for i in range(1):
-                        r_result[batch_idx, i] = torch.tensor(float("nan"))
-                continue
+                    if model.status != GRB.OPTIMAL:
+                        # Make the relaxations nan if the problem was infeasible, as a signal
+                        # that something has gone wrong
+                        if allow_relaxation:
+                            for i in range(1):
+                                r_result[batch_idx, i] = torch.tensor(float("nan"))
+                        continue
 
-            # Extract the results
-            for i in range(n_controls):
-                u_result[batch_idx, i] = torch.tensor(u[i].x)
-            if allow_relaxation:
-                for i in range(0):
-                    r_result[batch_idx, i] = torch.tensor(r[i].x)
+                    # Extract the results
+                    for i in range(n_controls):
+                        u_result[batch_idx, i] = torch.tensor(u[i].x)
+                    if allow_relaxation:
+                        for i in range(0):
+                            r_result[batch_idx, i] = torch.tensor(r[i].x)
 
         return u_result.type_as(x), r_result.type_as(x)
 
+    def _solve_CLF_QP_OptNet(self,
+        x: torch.Tensor,
+        u_ref: torch.Tensor,
+        V: torch.Tensor,
+        Lf_V: torch.Tensor,
+        Lg_V: torch.Tensor,
+        relaxation_penalty: float,
+        epsilon : float = 0.1,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+
+        bs = x.shape[0]
+        nu = self.dynamic_system.nu
+        nv = nu + 1
+        nieq = 4
+
+        u_min, u_max = self.dynamic_system.control_limits
+
+        diag_Q = 2 * torch.Tensor([1, 1000]).float().to(x.device)
+        Q = torch.diag(diag_Q).reshape(nv, nv)
+        Q = Variable(Q.expand(bs, nv, nv))
+        # print(f"Q shape is {Q.shape} \n")
+
+        p = Variable(torch.zeros(bs, nv).float().to(x.device))
+        # print(f"u_ref shape is {u_ref.shape}")
+        p[:, 0] = -2 * u_ref.squeeze(-1)
+        # print(f"p shape is {p.shape} \n")
+
+        # print(f"Lf_h shape is {Lf_V.shape}")
+        # print(f"Lg_h shape is {Lg_V.shape}")
+        
+        G = Variable(torch.zeros(bs, nieq, nv).to(x.device))
+        G[:, 0, 0] = -Lg_V.squeeze(-1)
+        G[:, 0, 1] = -1
+        G[:, 1, 0] = -1
+        G[:, 2, 0] = 1
+        G[:, 3, 1] = -1
+        # print(f"G shape is {G.shape}")
+        # print(f"Lg_V is {Lg_V}")
+        # print(f"G is {G}")
+
+        h = Variable(torch.zeros(bs, nieq).to(x.device))
+        h[:, 0] = Lf_V.squeeze(-1) + 0.5 * V.squeeze(-1) - epsilon
+        h[:, 1] = -u_min
+        h[:, 2] = u_max
+        h[:, 3] = 0
+        # print(f"h shape is {h.shape}")
+        # print(f"h is {h}")
+
+        e = Variable(torch.Tensor())
+
+        u_delta = QPFunction()(Q, p, G, h, e, e)
+        # print(f"u_delta shape is {u_delta.shape}")
+        # print(f"u_delta is {u_delta}")
+        
+        return u_delta[:, 0:1], u_delta[:, 1:2]
 
 
+
+    def test(self, x, relaxation_penalty=1000, epsilon=0.1):
+        H = self.h(x)
+        Lf_V, Lg_V = self.V_lie_derivatives(x)
+        u_ref = self.nominal_controller(x)
+
+        u0, r0 = self._solve_CLF_QP_OptNet(x, u_ref, H, Lf_V, Lg_V, relaxation_penalty, epsilon=epsilon)
+
+        u1, r1 = self._solve_CLF_QP_gurobi(
+            x, u_ref, H, Lf_V, Lg_V, relaxation_penalty, epsilon=epsilon
+        )
+
+        print(f"u1 is {u1}")
+        print(f"r1 is {r1}")
+    
 
     def V_loss(self, 
         s: torch.Tensor,
@@ -770,7 +857,7 @@ class NeuralNetwork(pl.LightningModule):
         if self.current_epoch > self.learn_shape_epochs:
             component_losses.update(
                 self.descent_loss(
-                    x, safe_mask, unsafe_mask,requires_grad=False
+                    x, safe_mask, unsafe_mask,requires_grad=True
                 )
             )
             # component_losses.update(
@@ -1000,18 +1087,20 @@ class NeuralNetwork(pl.LightningModule):
 if __name__ == "__main__":
 
         
-    s0 = -torch.rand(3, 2, dtype=torch.float)
+    s0 = torch.rand(3, 2, dtype=torch.float)
 
-    data_module = DataModule(system=inverted_pendulum_1, train_grid_gap=0.5, test_grid_gap=0.3)
+    data_module = DataModule(system=inverted_pendulum_1, train_grid_gap=3, test_grid_gap=0.3)
 
     NN = NeuralNetwork(dynamic_system=inverted_pendulum_1, data_module=data_module)
 
+    # NN.test(s0)
+
     NN.prepare_data()
 
-    u_nominal = NN.nominal_controller(s0)
-    NN.boundary_loss(NN.data_module.s_training, NN.data_module.safe_mask_training, NN.data_module.unsafe_mask_training, accuracy=True)
+    # u_nominal = NN.nominal_controller(s0)
+    # NN.boundary_loss(NN.data_module.s_training, NN.data_module.safe_mask_training, NN.data_module.unsafe_mask_training, accuracy=True)
     NN.descent_loss(NN.data_module.s_training, NN.data_module.safe_mask_training, NN.data_module.unsafe_mask_training, requires_grad=True)
-    # NN.V_loss(NN.data_module.s_training, NN.data_module.safe_mask_training, NN.data_module.unsafe_mask_training)
+    # # NN.V_loss(NN.data_module.s_training, NN.data_module.safe_mask_training, NN.data_module.unsafe_mask_training)
 
     del NN
 

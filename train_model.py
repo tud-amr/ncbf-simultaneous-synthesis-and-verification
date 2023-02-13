@@ -22,11 +22,11 @@ default_root_dir = "./masterthesis_test/"
 trainer = pl.Trainer(
     accelerator = "gpu",
     devices = 1,
-    max_epochs=400,
+    max_epochs=410,
     # callbacks=[ EarlyStopping(monitor="Total loss / val", mode="min", stopping_threshold=0.05) ], 
     default_root_dir=default_root_dir,
     )
 
 torch.autograd.set_detect_anomaly(True)
-trainer.fit(NN, ckpt_path="./masterthesis_test/lightning_logs/version_3/checkpoints/epoch=302-step=19804.ckpt")
+trainer.fit(NN, ckpt_path="./masterthesis_test/lightning_logs/version_4/checkpoints/epoch=399-step=26400.ckpt")
 # trainer.fit(NN)
