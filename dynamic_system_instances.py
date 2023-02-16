@@ -31,19 +31,19 @@ car1.set_nominal_state_constraints(rou_n)
 ######################## creat inverted pendulum object ##################
 
 
-domain_lower_bd2 = torch.Tensor([-3, -4]).float()
+domain_lower_bd2 = torch.Tensor([-torch.pi, -4]).float()
 domain_upper_bd2 = -domain_lower_bd2
 
 control_lower_bd2 =torch.Tensor([-2]).float()
 control_upper_bd2 = -control_lower_bd2
     
 def rou2(s: torch.Tensor) -> torch.Tensor:
-    rou_1 = torch.unsqueeze(s[:, 0] + torch.pi / 3, dim=1)
-    rou_2 = torch.unsqueeze( - s[:, 0] + torch.pi / 3 , dim=1)
+    rou_1 = torch.unsqueeze(s[:, 0] + torch.pi * 5 / 6, dim=1)
+    rou_2 = torch.unsqueeze( - s[:, 0] + torch.pi * 5 / 6 , dim=1)
     return torch.hstack( (rou_1, rou_2) ) 
 
 def rou_n2(s: torch.Tensor) -> torch.Tensor:
-    rou_1 = torch.pi / 5 -  torch.norm(s, dim=-1)
+    rou_1 = torch.pi * 3 / 4 -  torch.norm(s, dim=-1)
     
     return rou_1.unsqueeze(dim=1)
 

@@ -96,6 +96,8 @@ u_neg = U[~H_positive_mask]
 plt.figure()
 plt.scatter(x_pos, u_pos, s=10, c='b', label="safe set")
 plt.scatter(x_neg, u_neg, s=10, c='r', label="unsafe set")
+plt.xlabel('x')
+plt.ylabel('u')
 plt.title("h shape")
 plt.legend(bbox_to_anchor=(1, 1.1),loc='upper right')
 
@@ -131,7 +133,7 @@ s_safe_violation_df = pd.DataFrame({"x": X_safe_vio, "u": U_safe_vio}, index=ran
 X_unsafe_vio = s_unsafe_violation[:, 0].cpu().numpy()
 U_unsafe_vio = s_unsafe_violation[:, 1].cpu().numpy()
 
-print(f"there are {X_unsafe_vio.shape[0]} point violate safe reagion")
+print(f"there are {X_unsafe_vio.shape[0]} point violate unsafe reagion")
 
 s_unsafe_violation_df = pd.DataFrame({"x": X_unsafe_vio, "u": U_unsafe_vio}, index=range(0, X_unsafe_vio.shape[0]))
 

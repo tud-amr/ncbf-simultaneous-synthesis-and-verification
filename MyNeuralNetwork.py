@@ -2,6 +2,7 @@ import numpy as np
 import itertools
 from typing import Tuple, List, Optional
 import json
+import time
 
 import time
 import torch
@@ -34,6 +35,7 @@ class NeuralNetwork(pl.LightningModule):
         self,
         dynamic_system: ControlAffineSystem,
         data_module: DataModule,
+        require_grad_descent_loss :bool = True,
         learn_shape_epochs: int = 10,
         primal_learning_rate: float = 1e-3,
         gamma: float = 0.9,
@@ -48,6 +50,7 @@ class NeuralNetwork(pl.LightningModule):
         self.primal_learning_rate = primal_learning_rate
         self.dt = self.dynamic_system.dt
         self.gamma = gamma
+        self.require_grad_descent_loss = require_grad_descent_loss
         self.flatten = nn.Flatten()
         self.h = nn.Sequential(
             nn.Linear(2, 48),
@@ -61,8 +64,6 @@ class NeuralNetwork(pl.LightningModule):
         
         u_lower, u_upper = self.dynamic_system.control_limits
         self.u_v =[u_lower.item(), u_upper.item()]
-        self.train_loss = []
-        self.val_loss = []
         
         self.K = self.dynamic_system.K
         self.clf_lambda = clf_lambda
@@ -193,21 +194,21 @@ class NeuralNetwork(pl.LightningModule):
         hs_safe = hs[safe_mask]
         safe_violation = 1e2 *  F.relu(eps - hs_safe)
         safe_hs_term =  safe_violation.mean()
-        loss.append(("CLBF safe region term", safe_hs_term))
+        loss.append(("CLBF_safe_region_term", safe_hs_term))
         if accuracy:
             safe_V_acc = (safe_violation >= eps).sum() / safe_violation.nelement()
-            loss.append(("CLBF safe region accuracy", safe_V_acc))
+            loss.append(("CLBF_safe_region_accuracy", safe_V_acc))
 
         #   3.) h < 0 in the unsafe region
         hs_unsafe = hs[unsafe_mask]
         unsafe_violation = 1e2 *  F.relu(eps + hs_unsafe)
         unsafe_hs_term = unsafe_violation.mean()
-        loss.append(("CLBF unsafe region term", unsafe_hs_term))
+        loss.append(("CLBF_unsafe_region_term", unsafe_hs_term))
         if accuracy:
                 unsafe_V_acc = (
                     unsafe_violation >= eps 
                 ).sum() / unsafe_violation.nelement()
-                loss.append(("CLBF unsafe region accuracy", unsafe_V_acc))
+                loss.append(("CLBF_unsafe_region_accuracy", unsafe_V_acc))
 
         return loss
     
@@ -244,22 +245,15 @@ class NeuralNetwork(pl.LightningModule):
         eps = 0.1
         H = self.h(s)
         condition_active = torch.sigmoid(10 * (1.0 + eps - H))
- 
 
-    
         u_qp, qp_relaxation = self.solve_CLF_QP(s, requires_grad=requires_grad)
-        # u_qp_opt, qp_relaxation_opt = self.solve_CLF_QP(s, requires_grad=True)
 
-        # print(f"u_qp is {u_qp}")
-        # print(f"qp_relaxation is {qp_relaxation}")
-        # print(f"u_qp_opt is {u_qp_opt}")
-        # print(f"qp_relaxation_opt is {qp_relaxation_opt}")
 
         qp_relaxation = torch.mean(qp_relaxation, dim=-1)
 
         # Minimize the qp relaxation to encourage satisfying the decrease condition
         qp_relaxation_loss = qp_relaxation.mean()
-        # loss.append(("QP relaxation", qp_relaxation_loss))
+        loss.append(("QP_relaxation", qp_relaxation_loss))
 
         # Now compute the decrease using linearization
         eps = 1.0
@@ -281,9 +275,9 @@ class NeuralNetwork(pl.LightningModule):
             violation.nelement()
         )
 
-        loss.append(("CLBF descent term (linearized)", clbf_descent_term_lin))
+        loss.append(("CLBF_descent_term_linearized", clbf_descent_term_lin))
         if accuracy:
-            loss.append(("CLBF descent accuracy (linearized)", clbf_descent_acc_lin))
+            loss.append(("CLBF_descent_accuracy_linearized", clbf_descent_acc_lin))
 
 
         # Now compute the decrease using simulation
@@ -305,9 +299,9 @@ class NeuralNetwork(pl.LightningModule):
             violation.nelement() 
         )
 
-        loss.append(("CLBF descent term (simulated)", clbf_descent_term_sim))
+        loss.append(("CLBF_descent_term_simulated", clbf_descent_term_sim))
         if accuracy:
-            loss.append(("CLBF descent accuracy (simulated)", clbf_descent_acc_sim))
+            loss.append(("CLBF_descent_accuracy_simulated", clbf_descent_acc_sim))
 
 
         return loss
@@ -843,6 +837,11 @@ class NeuralNetwork(pl.LightningModule):
         # u = torch.clip(u, u_lower_bd.to(s.device), u_upper_bd.to(s.device))
         return u.squeeze(dim=-1)
 
+    def on_train_epoch_start(self) -> None:
+        # print("the epoch start!!!!!!")
+        self.epoch_start_time = time.time()
+        return super().on_train_epoch_start()
+
     def training_step(self, batch, batch_idx):
         """Conduct the training step for the given batch"""
         # Extract the input and masks from the batch
@@ -857,17 +856,14 @@ class NeuralNetwork(pl.LightningModule):
         if self.current_epoch > self.learn_shape_epochs:
             component_losses.update(
                 self.descent_loss(
-                    x, safe_mask, unsafe_mask,requires_grad=True
+                    x, safe_mask, unsafe_mask,requires_grad=self.require_grad_descent_loss
                 )
             )
             # component_losses.update(
             #      self.V_loss(x, safe_mask, unsafe_mask)
             # )
 
-        # component_losses = {}
-        # component_losses.update(
-        #     self.test_loss(x, safe_mask, unsafe_mask)
-        # )
+        
 
         # Compute the overall loss by summing up the individual losses
         total_loss = torch.tensor(0.0).type_as(x)
@@ -885,6 +881,9 @@ class NeuralNetwork(pl.LightningModule):
         """This function is called after every epoch is completed."""
         # Outputs contains a list for each optimizer, and we need to collect the losses
         # from all of them if there is a nested list
+
+        self.epoch_end_time = time.time()
+
         if isinstance(outputs[0], list):
             outputs = itertools.chain(*outputs)
 
@@ -907,16 +906,17 @@ class NeuralNetwork(pl.LightningModule):
 
         # Log the overall loss...
         if self.current_epoch > self.learn_shape_epochs:
-            self.log("Total loss / train", avg_losses["loss"], sync_dist=True)
+            self.log("Total_loss/train", avg_losses["loss"])
             print(f"\n the overall loss of this training epoch {avg_losses['loss']}\n")
-            self.train_loss.append(avg_losses['loss'])
+            self.log("Epoch_time/train", self.epoch_end_time - self.epoch_start_time)
+            print(f"the epoch time consume is {self.epoch_end_time - self.epoch_start_time}")
             # And all component losses
             for loss_key in avg_losses.keys():
                 # We already logged overall loss, so skip that here
                 if loss_key == "loss":
                     continue
                 # Log the other losses
-                self.log(loss_key + " / train", avg_losses[loss_key], sync_dist=True)
+                self.log(loss_key + "/train", avg_losses[loss_key], sync_dist=True)
 
 
     def validation_step(self, batch, batch_idx):
@@ -927,11 +927,11 @@ class NeuralNetwork(pl.LightningModule):
         # Get the various losses
         component_losses = {}
         component_losses.update(
-            self.boundary_loss(x, safe_mask, unsafe_mask, accuracy=True)
+            self.boundary_loss(x, safe_mask, unsafe_mask, accuracy=False)
         )
         if self.current_epoch > self.learn_shape_epochs:
             component_losses.update(
-                self.descent_loss(x, safe_mask, unsafe_mask, accuracy=True)
+                self.descent_loss(x, safe_mask, unsafe_mask, accuracy=False)
             )
 
         # Compute the overall loss by summing up the individual losses
@@ -976,20 +976,18 @@ class NeuralNetwork(pl.LightningModule):
 
         # Log the overall loss...
         if self.current_epoch > self.learn_shape_epochs:
-            self.log("Total loss / val", avg_losses["val_loss"], sync_dist=True)
+            self.log("Total_loss/val", avg_losses["val_loss"])
             print(f"\n the overall loss of this validation epoch {avg_losses['val_loss']}\n")
-            print(f"\n the descent accuracy of this validation epoch {avg_losses['CLBF descent accuracy (linearized)']}\n")
+            #print(f"\n the descent accuracy of this validation epoch {avg_losses['CLBF descent accuracy (linearized)']}\n")
             
-            self.val_loss.append(avg_losses['val_loss'])
             # And all component losses
             for loss_key in avg_losses.keys():
                 # We already logged overall loss, so skip that here
                 if loss_key == "val_loss":
                     continue
                 # Log the other losses
-                self.log(loss_key + " / val", avg_losses[loss_key], sync_dist=True)
-        else:
-            self.log("Total loss / val", 10, sync_dist=True)
+                self.log(loss_key + "/val", avg_losses[loss_key])
+        
         # **Now entering spicetacular automation zone**
         # We automatically run experiments every few epochs
 

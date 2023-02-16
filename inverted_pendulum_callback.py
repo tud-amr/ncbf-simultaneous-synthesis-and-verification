@@ -1,7 +1,7 @@
 import numpy as np
 import copy
 import pickle
-
+import time
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.results_plotter import load_results, ts2xy
 
@@ -41,6 +41,7 @@ class CustomCallback(BaseCallback):
         """
         This method is called before the first rollout starts.
         """
+        self.training_start_time = time.time()
         pass
 
     def _on_rollout_start(self) -> None:
@@ -67,6 +68,9 @@ class CustomCallback(BaseCallback):
         env = self.training_env.envs[0]
         
         self.logger.record(env.prefix + "reward", env.reward)
+        self.logger.record(env.prefix + "step_executing_time", env.step_executing_time) 
+        self.logger.record(env.prefix + "safety_violation_times", env.break_safety)
+        
         # print(a.reward)
         # Retrieve training reward
         # print("callback after step")
@@ -93,10 +97,15 @@ class CustomCallback(BaseCallback):
         """
         This event is triggered before exiting the `learn()` method.
         """
+        
+        
         env = self.training_env.envs[0]
+        
+        self.training_end_time = time.time()
+        self.logger.record(env.prefix + "training_total_time", self.training_end_time - self.training_start_time)
 
         trajectory_save_dir = self.log_dir + "/" + env.prefix +  "trajectory.pickle"
         with open(trajectory_save_dir, 'wb') as f:
             pickle.dump(env.training_trajectories, f, pickle.HIGHEST_PROTOCOL)
-
+        
         pass

@@ -13,7 +13,7 @@ print(f"Using {device} device")
 
 data_module = DataModule(system=inverted_pendulum_1, val_split=0.1, train_batch_size=64, test_batch_size=128, train_grid_gap=0.1, test_grid_gap=0.01)
 
-NN = NeuralNetwork.load_from_checkpoint("masterthesis_test/lightning_logs/version_4/checkpoints/epoch=399-step=26400.ckpt", dynamic_system=inverted_pendulum_1, data_module=data_module, learn_shape_epochs=2 )
+NN = NeuralNetwork.load_from_checkpoint("masterthesis_test/CBF_logs/run2/lightning_logs/version_0/checkpoints/epoch=39-step=2840.ckpt", dynamic_system=inverted_pendulum_1, data_module=data_module, learn_shape_epochs=2 )
 
 
 inverted_pendulum_1.set_barrier_function(NN)

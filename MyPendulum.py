@@ -1,5 +1,6 @@
 from os import path
 from typing import Optional
+import time
 
 import numpy as np
 import copy
@@ -74,6 +75,7 @@ class MyPendulumEnv(gym.Env):
         super().__init__()
         
         self.with_CBF = with_CBF
+        self.break_safety = 0
         self.prefix = "with_CBF_" if self.with_CBF else "without_CBF_"
         self.max_speed = 8
         self.max_torque = 2.0
@@ -105,6 +107,7 @@ class MyPendulumEnv(gym.Env):
         self.h = h
 
     def step(self, u):
+        start_time = time.time()
         th, thdot = self.state  # th := theta
 
         g = self.g
@@ -119,16 +122,17 @@ class MyPendulumEnv(gym.Env):
             device = self.h.device
             s = torch.from_numpy(self.state).float().reshape((-1,2)).to(device)
             hs = self.h(s)
-            if hs < 0:
-                raise Exception(f"Current state [{self.state[0]}, {self.state[1]}] is unsafe, h(s)={hs}")
+            # if hs < 0:
+            #     raise Exception(f"Current state [{self.state[0]}, {self.state[1]}] is unsafe, h(s)={hs}")
             
             u_ref = torch.from_numpy(u).float().reshape((-1,1)).to(device)            
             u_result, r_result = self.h.solve_CLF_QP(s, u_ref, epsilon=0.1)
 
             if r_result > 0.0:
-                raise Exception(f"The QP is infeasible, slack variable is {r_result}")
+                self.break_safety += 1
+            #     raise Exception(f"The QP is infeasible, slack variable is {r_result}")
 
-            u = u_result.cpu().numpy().squeeze(dim=-1)
+            u = u_result.cpu().numpy().squeeze(-1)
 
         u = np.clip(u, -self.max_torque, self.max_torque)[0]
         self.last_u = u  # for rendering
@@ -140,8 +144,11 @@ class MyPendulumEnv(gym.Env):
 
         self.state = np.array([newth, newthdot])
         
-        if np.linalg.norm(self.state) < 0.25:
+        is_unsafe = self.h.dynamic_system.unsafe_mask(torch.from_numpy(self.state).float().reshape((-1, 2)).to(self.h.device))
+        if is_unsafe[0]:
             self.done = True
+            cost = 15
+            self.break_safety += 1
         else:
             self.done = False
 
@@ -151,6 +158,9 @@ class MyPendulumEnv(gym.Env):
         self.reward = -costs
         normalized_theta = angle_normalize(self.state[0])
         self.epoch_trajectory.append( np.array([[normalized_theta], [self.state[1]]]) )
+
+        end_time = time.time()
+        self.step_executing_time = end_time - start_time
 
         return (self._get_obs(), -costs, self.done, {"username": "wangxinyu"})
 
@@ -167,10 +177,14 @@ class MyPendulumEnv(gym.Env):
             y = utils.verify_number_and_cast(y)
             high = np.array([x, y])
 
-        high = np.array([np.pi/5, 4])
+        # high = np.array([np.pi/5, 4])
         low = -high  # We enforce symmetric limits.
 
+        # find safe state
         self.state =  self.np_random.uniform(low=low, high=high)
+        while self.h( torch.from_numpy(self.state).float().reshape((-1, 2)).to(self.h.device)) <= 0.01:
+            self.state =  self.np_random.uniform(low=low, high=high)
+        
         self.last_u = None
 
         if self.render_mode == "human":
@@ -228,6 +242,15 @@ class MyPendulumEnv(gym.Env):
             transformed_coords.append(c)
         gfxdraw.aapolygon(self.surf, transformed_coords, (204, 77, 77))
         gfxdraw.filled_polygon(self.surf, transformed_coords, (204, 77, 77))
+
+        scaler = 0.7
+        down_offset = 20
+        c1 = (250 - scaler* rod_length/np.sqrt(3), 250 - scaler * rod_length - down_offset)
+        c2 = (250, 250 - down_offset)
+        c3 = (250 + scaler * rod_length/np.sqrt(3), 250 - scaler * rod_length - down_offset)
+        triangle_obstacle = [c1, c2, c3]
+        gfxdraw.aapolygon(self.surf, triangle_obstacle, (100, 77, 77))
+        gfxdraw.filled_polygon(self.surf, triangle_obstacle, (100, 77, 77))
 
         gfxdraw.aacircle(self.surf, offset, offset, int(rod_width / 2), (204, 77, 77))
         gfxdraw.filled_circle(
