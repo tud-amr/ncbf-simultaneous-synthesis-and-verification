@@ -96,9 +96,9 @@ u_neg = U[~H_positive_mask]
 plt.figure()
 plt.scatter(x_pos, u_pos, s=10, c='b', label="safe set")
 plt.scatter(x_neg, u_neg, s=10, c='r', label="unsafe set")
-plt.xlabel('x')
-plt.ylabel('u')
-plt.title("h shape")
+plt.xlabel(r"$\theta$")
+plt.ylabel(r"$\dot{\theta}$")
+plt.title("shape of 0-superlevel set")
 plt.legend(bbox_to_anchor=(1, 1.1),loc='upper right')
 
 
@@ -107,9 +107,9 @@ fig1,ax1=plt.subplots(1,1)
 cp = ax1.contourf(X.reshape((math.gcd(X.shape[0], 1000), -1)), U.reshape((math.gcd(X.shape[0], 1000), -1)), H.reshape((math.gcd(X.shape[0], 1000), -1)))
 fig1.colorbar(cp) # Add a colorbar to a plot
 ax1.set_title('Filled Contours Plot')
-ax1.set_xlabel('x')
-ax1.set_ylabel('u')
-ax1.set_title("the color map of barrier function on x-u 2D plain")
+plt.xlabel(r"$\theta$")
+plt.ylabel(r"$\dot{\theta}$")
+ax1.set_title("contour of CBF")
 
 
 ####################### plot safe violation point #####################
