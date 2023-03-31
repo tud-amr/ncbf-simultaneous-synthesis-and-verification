@@ -17,15 +17,15 @@ NN = NeuralNetwork.load_from_checkpoint("./masterthesis_test/CBF_logs/run6_with_
 NN = NN.to(device)
 
 
-env = MyPendulumEnv("human", g=9.81, with_CBF=False)
+env = MyPendulumEnv("human", g=9.81, with_CBF=True)
 env.set_barrier_function(NN)
-model = PPO.load("./masterthesis_test/stable_baseline_logs/run1/ip_without_CBF.zip")
+model = PPO.load("./masterthesis_test/stable_baseline_logs/run1/ip_with_CBF.zip")
 
 obs = env.reset()
 while True:
     action, _states = model.predict(obs)
     obs, rewards, dones, info = env.step(action)
     env.render()
-    if np.linalg.norm(env.state) < 0.2:    # dones is True or 
+    if  dones is True or np.linalg.norm(env.state) < 0.2:     
         obs = env.reset()
     

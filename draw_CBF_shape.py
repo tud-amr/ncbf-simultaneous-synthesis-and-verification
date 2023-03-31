@@ -15,33 +15,11 @@ from DataModule import DataModule
 
 test_results = torch.load("test_results.pt")
 
-# NN = NeuralNetwork.load_from_checkpoint("./masterthesis_test/lightning_logs/version_0/checkpoints/epoch=9-step=220.ckpt")
 
-# train_epoch_loss = [ loss.cpu().item() for loss in NN.train_loss ]
-# val_epoch_loss =  [ loss.cpu().item() for loss in NN.val_loss ]
-# train_epoch_loss = np.array(train_epoch_loss)[1:-1].reshape((-1,1))
-# val_epoch_loss = np.array(val_epoch_loss)[1:-1].reshape((-1,1))
+data_module = DataModule(system=inverted_pendulum_1, val_split=0, train_batch_size=64, test_batch_size=128, train_grid_gap=0.3, test_grid_gap=0.01)
+data_module.prepare_data()
 
-# train_or_val = np.array(["train_loss" for i in train_epoch_loss] + ["val_loss" for i in val_epoch_loss])
-# loss = np.vstack(( train_epoch_loss, val_epoch_loss ) )
-# epoch_num = np.vstack((np.arange(0, train_epoch_loss.shape[0]).reshape((-1,1)), np.arange(0, val_epoch_loss.shape[0]).reshape((-1,1)) ))
-
-
-
-# # create data_frame 
-# loss_df = pd.DataFrame( {'epoch_num': np.squeeze(epoch_num, axis=1) ,'loss': np.squeeze(loss, axis=1), 'train_or_val': train_or_val}, index=range(0, epoch_num.shape[0]) )
-
-# # Apply the default theme
-# sns.set_theme()
-
-# plt.figure()
-# sns.relplot(
-#     data=loss_df, kind="line",
-#     x="epoch_num", y="loss", hue="train_or_val",
-# )
-# plt.title("loss curve")
-
-
+s_training = data_module.s_training
 
 
 ######################## extract test results ###########################
@@ -56,18 +34,22 @@ s_unsafe_violation_val = []
 
 descent_violation = []
 
+safe_boundary_state = []
+
 for batch_id in range(len(test_results)):
     h_shape_s.append(test_results[batch_id]["shape_h"]["state"])
     h_shape_val.append(test_results[batch_id]["shape_h"]["val"])
     s_safe_violation.append(test_results[batch_id]["safe_violation"]["state"])
     s_unsafe_violation.append(test_results[batch_id]["unsafe_violation"]["state"])
     descent_violation.append(test_results[batch_id]["descent_violation"]["state"])
+    safe_boundary_state.append(test_results[batch_id]["safe_boundary"]["state"])
 
 h_shape_s = torch.vstack(h_shape_s)
 h_shape_val = torch.vstack(h_shape_val)
 s_safe_violation = torch.vstack(s_safe_violation)
 s_unsafe_violation = torch.vstack(s_unsafe_violation)
 descent_violation = torch.vstack(descent_violation)
+safe_boundary_state = torch.vstack(safe_boundary_state)
 
 
 ########################## start to plot #############################
@@ -95,13 +77,22 @@ u_neg = U[~H_positive_mask]
 
 plt.figure()
 plt.scatter(x_pos, u_pos, s=10, c='b', label="safe set")
-plt.scatter(x_neg, u_neg, s=10, c='r', label="unsafe set")
+plt.scatter(x_neg, u_neg, s=10, c='tab:gray', label="unsafe set")
 plt.xlabel(r"$\theta$")
 plt.ylabel(r"$\dot{\theta}$")
 plt.title("shape of 0-superlevel set")
 plt.legend(bbox_to_anchor=(1, 1.1),loc='upper right')
 
+u_unsafe = np.arange(-4,4,0.1)
+x_unsafe1 = np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
+x_unsafe2 = - np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
+plt.plot(x_unsafe1, u_unsafe, c='y', linewidth=2)
+plt.plot(x_unsafe2, u_unsafe, c='y', linewidth=2)
 
+safe_boundary_state = safe_boundary_state.cpu().numpy()
+plt.scatter(safe_boundary_state[:, 0], safe_boundary_state[:,1], s=0.5, c='y')
+
+plt.scatter(s_training[:,0], s_training[:,1], marker='X', s=10, c='k')
 
 fig1,ax1=plt.subplots(1,1)
 cp = ax1.contourf(X.reshape((math.gcd(X.shape[0], 1000), -1)), U.reshape((math.gcd(X.shape[0], 1000), -1)), H.reshape((math.gcd(X.shape[0], 1000), -1)))
@@ -122,6 +113,23 @@ print(f"there are {X_safe_vio.shape[0]} point violate safe reagion")
 
 s_safe_violation_df = pd.DataFrame({"x": X_safe_vio, "u": U_safe_vio}, index=range(0, X_safe_vio.shape[0]))
 
+plt.figure()
+plt.scatter(x_pos, u_pos, s=10, c='b', label="safe set")
+plt.scatter(x_neg, u_neg, s=10, c='tab:gray', label="unsafe set")
+plt.xlabel(r"$\theta$")
+plt.ylabel(r"$\dot{\theta}$")
+plt.title("safe violation area")
+plt.legend(bbox_to_anchor=(1, 1.1),loc='upper right')
+
+u_unsafe = np.arange(-4,4,0.1)
+x_unsafe1 = np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
+x_unsafe2 = - np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
+plt.plot(x_unsafe1, u_unsafe, c='y', linewidth=2)
+plt.plot(x_unsafe2, u_unsafe, c='y', linewidth=2)
+
+plt.scatter(safe_boundary_state[:, 0], safe_boundary_state[:,1], s=0.5, c='y')
+
+plt.scatter(X_safe_vio, U_safe_vio, marker='X', c='r')
 
 # plt.figure()
 # sns.scatterplot(data=s_safe_violation_df, x="x", y="u", marker="X")
@@ -138,8 +146,28 @@ print(f"there are {X_unsafe_vio.shape[0]} point violate unsafe reagion")
 s_unsafe_violation_df = pd.DataFrame({"x": X_unsafe_vio, "u": U_unsafe_vio}, index=range(0, X_unsafe_vio.shape[0]))
 
 
+
+plt.figure()
+plt.scatter(x_pos, u_pos, s=10, c='b', label="safe set")
+plt.scatter(x_neg, u_neg, s=10, c='tab:gray', label="unsafe set")
+plt.xlabel(r"$\theta$")
+plt.ylabel(r"$\dot{\theta}$")
+plt.title("unsafe violation area")
+plt.legend(bbox_to_anchor=(1, 1.1),loc='upper right')
+
+u_unsafe = np.arange(-4,4,0.1)
+x_unsafe1 = np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
+x_unsafe2 = - np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
+plt.plot(x_unsafe1, u_unsafe, c='y', linewidth=2)
+plt.plot(x_unsafe2, u_unsafe, c='y', linewidth=2)
+
+plt.scatter(safe_boundary_state[:, 0], safe_boundary_state[:,1], s=0.5, c='y')
+
+plt.scatter(X_unsafe_vio, U_unsafe_vio, marker='X', c='r')
+
+
 # plt.figure()
-# sns.scatterplot(data=s_safe_violation_df, x="x", y="u", marker="X")
+# sns.scatterplot(data=s_unsafe_violation_df, x="x", y="u", marker="X")
 # plt.title("unsafe violation states")
 
 
@@ -152,6 +180,24 @@ U_descent = descent_violation[:, 1].cpu().numpy()
 
 print(f"there are {X_descent.shape[0]} points violate descent condition")
 
+plt.figure()
+plt.scatter(x_pos, u_pos, s=10, c='b', label="safe set")
+plt.scatter(x_neg, u_neg, s=10, c='tab:gray', label="unsafe set")
+plt.xlabel(r"$\theta$")
+plt.ylabel(r"$\dot{\theta}$")
+plt.title("CBC violation area")
+plt.legend(bbox_to_anchor=(1, 1.1),loc='upper right')
+
+u_unsafe = np.arange(-4,4,0.1)
+x_unsafe1 = np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
+x_unsafe2 = - np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
+plt.plot(x_unsafe1, u_unsafe, c='y', linewidth=2)
+plt.plot(x_unsafe2, u_unsafe, c='y', linewidth=2)
+
+plt.scatter(safe_boundary_state[:, 0], safe_boundary_state[:,1], s=0.5, c='y')
+
+plt.scatter(X_descent, U_descent, s=10, c='r')
+plt.show()
 # descent_violation_df = pd.DataFrame({"x": X_descent, "u": U_descent}, index=range(0, X_descent.shape[0]))
 # fig, ax = plt.subplots()
 # sns.scatterplot(data=descent_violation_df, x="x", y="u", marker="X", ax=ax)
@@ -161,22 +207,8 @@ print(f"there are {X_descent.shape[0]} points violate descent condition")
 # ax.set_xlim(-2, 2)
 # ax.set_ylim(-2, 2)
 
-#################### plot descent violation on h shape ######################
 
-plt.figure()
-
-
-
-plt.scatter(x_pos, u_pos, s=10, c='b')
-plt.scatter(x_neg, u_neg, s=10, c='r')
-plt.scatter(X_descent, U_descent, s=10, c='y')
-
-plt.show()
-
-
-
-
-
+############### end #####################
 
 
 

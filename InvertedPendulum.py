@@ -46,6 +46,7 @@ class InvertedPendulum(ControlAffineSystem):
         self.m = m
         self.L = L
         self.b = b
+        self.gravity = 9.81
 
         A = np.array([[0, 1], [0, -self.b/(self.m * self.L**2)]]).reshape((2,2))
         B = np.array([0, 1/(self.m * self.L **2)]).reshape((self.ns, self.nu))
