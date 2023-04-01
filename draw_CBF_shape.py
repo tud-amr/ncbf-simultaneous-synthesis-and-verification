@@ -15,8 +15,8 @@ from DataModule import DataModule
 
 test_results = torch.load("test_results.pt")
 
-
-data_module = DataModule(system=inverted_pendulum_1, val_split=0, train_batch_size=64, test_batch_size=128, train_grid_gap=0.3, test_grid_gap=0.01)
+domain_limit_lb, domain_limit_ub = inverted_pendulum_1.domain_limits
+data_module = DataModule(system=inverted_pendulum_1, val_split=0, train_batch_size=64, test_batch_size=128, train_grid_gap=0.5, test_grid_gap=0.01)
 data_module.prepare_data()
 
 s_training = data_module.s_training
@@ -83,7 +83,7 @@ plt.ylabel(r"$\dot{\theta}$")
 plt.title("shape of 0-superlevel set")
 plt.legend(bbox_to_anchor=(1, 1.1),loc='upper right')
 
-u_unsafe = np.arange(-4,4,0.1)
+u_unsafe = np.arange(domain_limit_lb[1],domain_limit_ub[1],0.1)
 x_unsafe1 = np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
 x_unsafe2 = - np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
 plt.plot(x_unsafe1, u_unsafe, c='y', linewidth=2)
@@ -121,7 +121,7 @@ plt.ylabel(r"$\dot{\theta}$")
 plt.title("safe violation area")
 plt.legend(bbox_to_anchor=(1, 1.1),loc='upper right')
 
-u_unsafe = np.arange(-4,4,0.1)
+u_unsafe = np.arange(domain_limit_lb[1],domain_limit_ub[1],0.1)
 x_unsafe1 = np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
 x_unsafe2 = - np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
 plt.plot(x_unsafe1, u_unsafe, c='y', linewidth=2)
@@ -155,7 +155,7 @@ plt.ylabel(r"$\dot{\theta}$")
 plt.title("unsafe violation area")
 plt.legend(bbox_to_anchor=(1, 1.1),loc='upper right')
 
-u_unsafe = np.arange(-4,4,0.1)
+u_unsafe = np.arange(domain_limit_lb[1],domain_limit_ub[1],0.1)
 x_unsafe1 = np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
 x_unsafe2 = - np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
 plt.plot(x_unsafe1, u_unsafe, c='y', linewidth=2)
@@ -188,7 +188,7 @@ plt.ylabel(r"$\dot{\theta}$")
 plt.title("CBC violation area")
 plt.legend(bbox_to_anchor=(1, 1.1),loc='upper right')
 
-u_unsafe = np.arange(-4,4,0.1)
+u_unsafe = np.arange(domain_limit_lb[1],domain_limit_ub[1],0.1)
 x_unsafe1 = np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
 x_unsafe2 = - np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
 plt.plot(x_unsafe1, u_unsafe, c='y', linewidth=2)
