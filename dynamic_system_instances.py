@@ -42,7 +42,7 @@ def rou2(s: torch.Tensor) -> torch.Tensor:
     rou_2 = torch.unsqueeze( - s[:, 0] + torch.pi * 5 / 6 , dim=1)
     rou_3 = torch.unsqueeze(s[:, 1] + 4, dim=1)
     rou_4 = torch.unsqueeze( - s[:, 1] + 4 , dim=1)
-    return torch.hstack( (rou_1, rou_2) ) 
+    return torch.hstack( (rou_1, rou_2, rou_3, rou_4) ) 
 
 def rou_n2(s: torch.Tensor) -> torch.Tensor:
     rou_1 = torch.pi * 3 / 4 -  torch.norm(s, dim=-1)

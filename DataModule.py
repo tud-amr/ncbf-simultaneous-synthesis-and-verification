@@ -50,6 +50,12 @@ class DataModule(pl.LightningDataModule):
         s_samples = data_points_train.T
         test_sample = data_points_test.T
 
+        # restant_of_batch = s_samples.shape[0] % self.train_batch_size
+        # num_of_samples_to_add = self.train_batch_size - restant_of_batch
+        # new_samples = s_samples[0:num_of_samples_to_add]
+        # s_samples = torch.vstack((s_samples, new_samples))
+        
+
         random_indices = torch.randperm(s_samples.shape[0])
         val_pts = int(s_samples.shape[0] * self.val_split)
         validation_indices = random_indices[:val_pts]

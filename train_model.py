@@ -13,18 +13,18 @@ from dynamic_system_instances import car1, inverted_pendulum_1
 from DataModule import DataModule
 
 
-data_module = DataModule(system=inverted_pendulum_1, val_split=0, train_batch_size=64, test_batch_size=128, train_grid_gap=0.5, test_grid_gap=0.01)
+data_module = DataModule(system=inverted_pendulum_1, val_split=0, train_batch_size=64, test_batch_size=128, train_grid_gap=0.3, test_grid_gap=0.01)
 
 NN = NeuralNetwork(dynamic_system=inverted_pendulum_1, data_module=data_module, require_grad_descent_loss=True)
 
-default_root_dir = "./masterthesis_test/CBF_logs/run" + str(0) + "_robust_training"
+default_root_dir = "./masterthesis_test/CBF_logs/robust_training"
 
 trainer = pl.Trainer(
     accelerator = "gpu",
     devices = 1,
-    max_epochs=2000,
-    callbacks=[ EarlyStopping(monitor="Total_loss/train", mode="min", check_on_train_epoch_end=True, strict=False, patience=50, stopping_threshold=0.001) ], 
-    default_root_dir=default_root_dir,
+    max_epochs=50,
+    callbacks=[ EarlyStopping(monitor="Safety_loss/train", mode="min", check_on_train_epoch_end=True, strict=False, patience=50) ], 
+    # default_root_dir=default_root_dir,
     )
 
 torch.autograd.set_detect_anomaly(True)

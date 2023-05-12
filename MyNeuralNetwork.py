@@ -201,14 +201,14 @@ class NeuralNetwork(pl.LightningModule):
         hs = self.h(s)
 
         # 1.) h > 0 in the safe region
-        hs_safe = hs[safe_mask]
+        hs_safe = hs[torch.logical_not(unsafe_mask)]
         safe_violation = coefficient_for_safe_state_loss *  F.relu( eps - hs_safe)
         safe_hs_term =  safe_violation.mean()
         if not torch.isnan(safe_hs_term):
-            loss.append(("CLBF_safe_region_term", safe_hs_term))
-        if accuracy:
-            safe_V_acc = (safe_violation >= eps).sum() / safe_violation.nelement()
-            loss.append(("CLBF_safe_region_accuracy", safe_V_acc))
+            loss.append(("safe_region_term", safe_hs_term))
+        # if accuracy:
+        #     safe_V_acc = (safe_violation >= eps).sum() / safe_violation.nelement()
+        #     loss.append(("CLBF_safe_region_accuracy", safe_V_acc))
 
         #   3.) h < 0 in the unsafe region
 
@@ -217,15 +217,15 @@ class NeuralNetwork(pl.LightningModule):
         
         unsafe_hs_term = unsafe_violation.mean() 
         if not torch.isnan(unsafe_hs_term):
-            loss.append(("CLBF_unsafe_region_term", unsafe_hs_term))
-        if accuracy:
-                unsafe_V_acc = (
-                    unsafe_violation >= eps 
-                ).sum() / unsafe_violation.nelement()
-                loss.append(("CLBF_unsafe_region_accuracy", unsafe_V_acc))
+            loss.append(("unsafe_region_term", unsafe_hs_term))
+        # if accuracy:
+        #         unsafe_V_acc = (
+        #             unsafe_violation >= eps 
+        #         ).sum() / unsafe_violation.nelement()
+        #         loss.append(("CLBF_unsafe_region_accuracy", unsafe_V_acc))
 
-        print(f"safe_boundary_loss_term: {safe_hs_term}")
-        print(f"unsafe_boundary_loss_term: {unsafe_hs_term}")
+        # print(f"safe_boundary_loss_term: {safe_hs_term}")
+        # print(f"unsafe_boundary_loss_term: {unsafe_hs_term}")
 
 
         return loss
@@ -295,9 +295,9 @@ class NeuralNetwork(pl.LightningModule):
             violation.nelement()
         )
 
-        loss.append(("CLBF_descent_term_linearized", clbf_descent_term_lin))
-        if accuracy:
-            loss.append(("CLBF_descent_accuracy_linearized", clbf_descent_acc_lin))
+        loss.append(("descent_term_linearized", clbf_descent_term_lin))
+        # if accuracy:
+        #     loss.append(("CLBF_descent_accuracy_linearized", clbf_descent_acc_lin))
 
 
         ##################### Now compute the decrease using simulation ##########################
@@ -319,9 +319,9 @@ class NeuralNetwork(pl.LightningModule):
             violation.nelement() 
         )
 
-        loss.append(("CLBF_descent_term_simulated", clbf_descent_term_sim))
-        if accuracy:
-            loss.append(("CLBF_descent_accuracy_simulated", clbf_descent_acc_sim))
+        loss.append(("descent_term_simulated", clbf_descent_term_sim))
+        # if accuracy:
+        #     loss.append(("CLBF_descent_accuracy_simulated", clbf_descent_acc_sim))
 
         ################################# compute bound on epsilon area #####################################
         
@@ -487,14 +487,14 @@ class NeuralNetwork(pl.LightningModule):
             # violation = F.relu(h_min)
             epsilon_area_q_min_loss_term = violation[torch.logical_not(unsafe_mask)].mean()
             
-            loss.append(("epsilon_area_q_min_loss", epsilon_area_q_min_loss_term))
+            loss.append(("descent_term_epsilon_area", epsilon_area_q_min_loss_term))
         else:
             print(f"the OptNet has no solution!!!!!!!!!!!")
             exit()
 
-        print(f"qp_relaxation_loss: {qp_relaxation_loss}")
-        print(f"clbf_descent_term_lin: {clbf_descent_term_lin}")
-        print(f"epsilon_area_q_min_loss_term: {epsilon_area_q_min_loss_term}")
+        # print(f"qp_relaxation_loss: {qp_relaxation_loss}")
+        # print(f"descent_term_lin: {clbf_descent_term_lin}")
+        # print(f"descent_term_epsilon_area: {epsilon_area_q_min_loss_term}")
 
         return loss
 
@@ -518,13 +518,13 @@ class NeuralNetwork(pl.LightningModule):
 
         lb, ub = model.compute_bounds(x=(x,), method="backward")
         hs_unsafe_ub = ub[unsafe_mask]
-        unsafe_ub_violation = 1e2 * F.relu(hs_unsafe_ub)
+        unsafe_ub_violation = coefficients_unsafe_epsilon_loss * F.relu(hs_unsafe_ub)
 
         unsafe_hs_epsilon_term = unsafe_ub_violation.mean()
         if not torch.isnan(unsafe_hs_epsilon_term):
-            loss.append(("CLBF_unsafe_region_epsilon_term", unsafe_hs_epsilon_term))
+            loss.append(("unsafe_region_epsilon_term", unsafe_hs_epsilon_term))
 
-        print(f"unsafe_hs_epsilon_term = {unsafe_hs_epsilon_term}")
+        # print(f"unsafe_region_epsilon_term = {unsafe_hs_epsilon_term}")
         
         return loss 
 
@@ -1015,9 +1015,9 @@ class NeuralNetwork(pl.LightningModule):
             )
 
         if self.training_stage == 2:
-
+            coefficient_for_safe_state_loss = max(40 * (1 - self.current_epoch/200), 1)
             component_losses.update(
-                self.boundary_loss(s, safe_mask, unsafe_mask, coefficient_for_safe_state_loss=50, coefficient_for_unsafe_state_loss=1e2)
+                self.boundary_loss(s, safe_mask, unsafe_mask, coefficient_for_safe_state_loss=coefficient_for_safe_state_loss, coefficient_for_unsafe_state_loss=1e2)
             )
 
             component_losses.update(
@@ -1038,14 +1038,11 @@ class NeuralNetwork(pl.LightningModule):
             if not torch.isnan(loss_value):
                 total_loss += loss_value
 
-        if self.training_stage == 0 and total_loss < 0.1: # just satisfy condition 1 and 2
-            self.training_stage = 1  # start to consider condition 3
-        if self.training_stage == 1 and total_loss < 0.1: 
-            self.training_stage = 2 # start to consider epsilon loss
-
         print(f"current training stage is {self.training_stage}")
 
         batch_dict = {"loss": total_loss, **component_losses}
+
+        del copy_h
 
         return batch_dict
     
@@ -1077,12 +1074,28 @@ class NeuralNetwork(pl.LightningModule):
             key_losses = torch.stack(losses[key])
             avg_losses[key] = torch.nansum(key_losses) / key_losses.shape[0]
 
+        safety_losses = 0
+        performance_losses = 0
+        safety_loss_name = ['unsafe_region_term', 'descent_term_linearized', 
+                            'descent_term_simulated','descent_term_epsilon_area','unsafe_region_epsilon_term']
+        performance_lose_name = ['safe_region_term']
+        for key in avg_losses.keys():
+            if key in safety_loss_name:
+                safety_losses += avg_losses[key]
+            if key in performance_lose_name:
+                performance_losses += avg_losses[key]
+
+
         # Log the overall loss...
         # if self.current_epoch > self.learn_shape_epochs:
         self.log("Total_loss/train", avg_losses["loss"])
         print(f"\n the overall loss of this training epoch {avg_losses['loss']}\n")
         self.log("Epoch_time/train", self.epoch_end_time - self.epoch_start_time)
         print(f"the epoch time consume is {self.epoch_end_time - self.epoch_start_time}")
+        self.log("Safety_loss/train", safety_losses)
+        print(f"overall safety loss of this training epoch {safety_losses}")
+        self.log("Performance_loss/train", performance_losses)
+        print(f"overall performance loss of this training epoch {performance_losses}")
         # And all component losses
         for loss_key in avg_losses.keys():
             # We already logged overall loss, so skip that here
@@ -1091,6 +1104,11 @@ class NeuralNetwork(pl.LightningModule):
             # Log the other losses
             self.log(loss_key + "/train", avg_losses[loss_key], sync_dist=True)
 
+        if self.training_stage == 0 and (avg_losses["loss"] < 1 or  self.current_epoch > 10): # just satisfy condition 1 and 2
+            self.training_stage = 1  # start to consider condition 3
+        elif self.training_stage == 1 and (avg_losses["loss"] < 1 or self.current_epoch > 20): 
+            self.training_stage = 2 # start to consider epsilon loss
+        print(f"current training stage is {self.training_stage}")
 
     def validation_step(self, batch, batch_idx):
         """Conduct the validation step for the given batch"""

@@ -6,6 +6,10 @@ from torch import nn
 import pytorch_lightning as pl
 import seaborn as sns
 import pandas as pd
+from matplotlib.patches import Patch
+from matplotlib.lines import Line2D
+
+import scipy.io as sio
 
 from MyNeuralNetwork import *
 from dynamic_system_instances import car1, inverted_pendulum_1
@@ -16,7 +20,7 @@ from DataModule import DataModule
 test_results = torch.load("test_results.pt")
 
 domain_limit_lb, domain_limit_ub = inverted_pendulum_1.domain_limits
-data_module = DataModule(system=inverted_pendulum_1, val_split=0, train_batch_size=64, test_batch_size=128, train_grid_gap=0.5, test_grid_gap=0.01)
+data_module = DataModule(system=inverted_pendulum_1, val_split=0, train_batch_size=64, test_batch_size=128, train_grid_gap=0.3, test_grid_gap=0.01)
 data_module.prepare_data()
 
 s_training = data_module.s_training
@@ -57,6 +61,39 @@ safe_boundary_state = torch.vstack(safe_boundary_state)
 ############################### plot shape of barrier function ##############################
 
 
+
+mat_contents = sio.loadmat("RA_result/extraOuts.mat")
+# print(mat_contents['a0'].shape)
+
+hVS_XData = mat_contents['a0']
+hVS_YData = mat_contents['a1']
+hVS_ZData = mat_contents['a2']
+hVS0_XData = mat_contents['a3']
+hVS0_YData = mat_contents['a4']
+hVS0_ZData = mat_contents['a5']
+
+plt.figure()
+# Provide a title for the contour plt
+plt.title('Avoid Set Surface Function')
+
+plt.xlabel(r"$\theta$")
+plt.ylabel(r"$\dot{\theta}$")
+
+# Create contour lines or level curves using matpltlib.pyplt module
+contours = plt.contourf(hVS0_XData, hVS0_YData, hVS0_ZData, levels=[-0.1, 0, 1], colors=['grey','w','w'], extend='both')
+
+contours2 = plt.contour(hVS0_XData, hVS0_YData, hVS0_ZData)
+
+# Display z values on contour lines
+plt.clabel(contours2, inline=1, fontsize=10)
+
+plt.figure()
+
+# Create contour lines or level curves using matpltlib.pyplt module
+contours = plt.contourf(hVS_XData, hVS_YData, hVS_ZData, levels=[-0.1, 0, 1], colors=['w','y','w'], extend='both')
+
+contours2 = plt.contour(hVS0_XData, hVS0_YData, hVS0_ZData, levels=[0], colors='grey', linewidth=5)
+
 # create h_shape data_frame
 
 X = h_shape_s[:, 0].cpu().numpy()
@@ -75,32 +112,58 @@ u_neg = U[~H_positive_mask]
 # fig, ax = plt.subplots()
 # sns.scatterplot(data=h_shape_df, x="x", y="u", hue="h_pos_mask", ax=ax)
 
-plt.figure()
-plt.scatter(x_pos, u_pos, s=10, c='b', label="safe set")
-plt.scatter(x_neg, u_neg, s=10, c='tab:gray', label="unsafe set")
+plt.scatter(x_pos, u_pos, s=10, c='b')
+# plt.scatter(x_neg, u_neg, s=10, c='tab:gray')
 plt.xlabel(r"$\theta$")
 plt.ylabel(r"$\dot{\theta}$")
 plt.title("shape of 0-superlevel set")
-plt.legend(bbox_to_anchor=(1, 1.1),loc='upper right')
+
 
 u_unsafe = np.arange(domain_limit_lb[1],domain_limit_ub[1],0.1)
 x_unsafe1 = np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
 x_unsafe2 = - np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
-plt.plot(x_unsafe1, u_unsafe, c='y', linewidth=2)
-plt.plot(x_unsafe2, u_unsafe, c='y', linewidth=2)
+# plt.plot(x_unsafe1, u_unsafe, c='y', linewidth=2)
+# plt.plot(x_unsafe2, u_unsafe, c='y', linewidth=2)
 
 safe_boundary_state = safe_boundary_state.cpu().numpy()
-plt.scatter(safe_boundary_state[:, 0], safe_boundary_state[:,1], s=0.5, c='y')
+# plt.scatter(safe_boundary_state[:, 0], safe_boundary_state[:,1], s=0.5, c='y')
 
 plt.scatter(s_training[:,0], s_training[:,1], marker='X', s=10, c='k')
 
-fig1,ax1=plt.subplots(1,1)
-cp = ax1.contourf(X.reshape((math.gcd(X.shape[0], 1000), -1)), U.reshape((math.gcd(X.shape[0], 1000), -1)), H.reshape((math.gcd(X.shape[0], 1000), -1)))
-fig1.colorbar(cp) # Add a colorbar to a plot
-ax1.set_title('Filled Contours Plot')
-plt.xlabel(r"$\theta$")
-plt.ylabel(r"$\dot{\theta}$")
-ax1.set_title("contour of CBF")
+
+# custom legend
+
+legend_elements = [
+                    Line2D([0], [0], marker='X', color='w', label='Training samples',
+                          markerfacecolor='k', markersize=10),
+                    Line2D([0], [0], color='grey', lw=2, label='Obstacles'),
+                    Patch(facecolor='y', edgecolor='y',
+                         label='Invariant Set from RA'),
+                    Patch(facecolor='b', edgecolor='b',
+                         label='Invariant Set from neural CBF')
+                   ]
+
+plt.legend(handles=legend_elements, bbox_to_anchor=(1, 1.1),loc='upper right')
+
+
+plt.figure()
+contours2 = plt.contour(hVS0_XData, hVS0_YData, hVS0_ZData, levels=[0])
+plt.scatter(s_training[:,0], s_training[:,1], marker='X', s=10, c='k')
+legend_elements = [
+                    Line2D([0], [0], marker='X', color='w', label='Training samples',
+                          markerfacecolor='k', markersize=10),
+                    Line2D([0], [0], color='grey', lw=2, label='Obstacles'),
+                   ]
+
+plt.legend(handles=legend_elements, bbox_to_anchor=(1, 1.1),loc='upper right')
+
+# fig1,ax1=plt.subplots(1,1)
+# cp = ax1.contourf(X.reshape((math.gcd(X.shape[0], 1000), -1)), U.reshape((math.gcd(X.shape[0], 1000), -1)), H.reshape((math.gcd(X.shape[0], 1000), -1)))
+# fig1.colorbar(cp) # Add a colorbar to a plot
+# ax1.set_title('Filled Contours Plot')
+# plt.xlabel(r"$\theta$")
+# plt.ylabel(r"$\dot{\theta}$")
+# ax1.set_title("contour of CBF")
 
 
 ####################### plot safe violation point #####################
@@ -113,23 +176,23 @@ print(f"there are {X_safe_vio.shape[0]} point violate safe reagion")
 
 s_safe_violation_df = pd.DataFrame({"x": X_safe_vio, "u": U_safe_vio}, index=range(0, X_safe_vio.shape[0]))
 
-plt.figure()
-plt.scatter(x_pos, u_pos, s=10, c='b', label="safe set")
-plt.scatter(x_neg, u_neg, s=10, c='tab:gray', label="unsafe set")
-plt.xlabel(r"$\theta$")
-plt.ylabel(r"$\dot{\theta}$")
-plt.title("safe violation area")
-plt.legend(bbox_to_anchor=(1, 1.1),loc='upper right')
+# plt.figure()
+# plt.scatter(x_pos, u_pos, s=10, c='b', label="forward invariant set")
+# plt.scatter(x_neg, u_neg, s=10, c='tab:gray')
+# plt.xlabel(r"$\theta$")
+# plt.ylabel(r"$\dot{\theta}$")
+# plt.title("safe violation area")
+# plt.legend(bbox_to_anchor=(1, 1.1),loc='upper right')
 
 u_unsafe = np.arange(domain_limit_lb[1],domain_limit_ub[1],0.1)
 x_unsafe1 = np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
 x_unsafe2 = - np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
-plt.plot(x_unsafe1, u_unsafe, c='y', linewidth=2)
-plt.plot(x_unsafe2, u_unsafe, c='y', linewidth=2)
+# plt.plot(x_unsafe1, u_unsafe, c='y', linewidth=2)
+# plt.plot(x_unsafe2, u_unsafe, c='y', linewidth=2)
 
-plt.scatter(safe_boundary_state[:, 0], safe_boundary_state[:,1], s=0.5, c='y')
+# plt.scatter(safe_boundary_state[:, 0], safe_boundary_state[:,1], s=0.5, c='y')
 
-plt.scatter(X_safe_vio, U_safe_vio, marker='X', c='r')
+# plt.scatter(X_safe_vio, U_safe_vio, marker='X', c='r')
 
 # plt.figure()
 # sns.scatterplot(data=s_safe_violation_df, x="x", y="u", marker="X")
@@ -148,8 +211,8 @@ s_unsafe_violation_df = pd.DataFrame({"x": X_unsafe_vio, "u": U_unsafe_vio}, ind
 
 
 plt.figure()
-plt.scatter(x_pos, u_pos, s=10, c='b', label="safe set")
-plt.scatter(x_neg, u_neg, s=10, c='tab:gray', label="unsafe set")
+plt.scatter(x_pos, u_pos, s=10, c='b', label="forward invariant set")
+plt.scatter(x_neg, u_neg, s=10, c='tab:gray')
 plt.xlabel(r"$\theta$")
 plt.ylabel(r"$\dot{\theta}$")
 plt.title("unsafe violation area")
@@ -161,7 +224,7 @@ x_unsafe2 = - np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
 plt.plot(x_unsafe1, u_unsafe, c='y', linewidth=2)
 plt.plot(x_unsafe2, u_unsafe, c='y', linewidth=2)
 
-plt.scatter(safe_boundary_state[:, 0], safe_boundary_state[:,1], s=0.5, c='y')
+# plt.scatter(safe_boundary_state[:, 0], safe_boundary_state[:,1], s=0.5, c='y')
 
 plt.scatter(X_unsafe_vio, U_unsafe_vio, marker='X', c='r')
 
@@ -181,8 +244,8 @@ U_descent = descent_violation[:, 1].cpu().numpy()
 print(f"there are {X_descent.shape[0]} points violate descent condition")
 
 plt.figure()
-plt.scatter(x_pos, u_pos, s=10, c='b', label="safe set")
-plt.scatter(x_neg, u_neg, s=10, c='tab:gray', label="unsafe set")
+plt.scatter(x_pos, u_pos, s=10, c='b', label="forward invariant set")
+plt.scatter(x_neg, u_neg, s=10, c='tab:gray')
 plt.xlabel(r"$\theta$")
 plt.ylabel(r"$\dot{\theta}$")
 plt.title("CBC violation area")
@@ -194,7 +257,7 @@ x_unsafe2 = - np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
 plt.plot(x_unsafe1, u_unsafe, c='y', linewidth=2)
 plt.plot(x_unsafe2, u_unsafe, c='y', linewidth=2)
 
-plt.scatter(safe_boundary_state[:, 0], safe_boundary_state[:,1], s=0.5, c='y')
+# plt.scatter(safe_boundary_state[:, 0], safe_boundary_state[:,1], s=0.5, c='y')
 
 plt.scatter(X_descent, U_descent, s=10, c='r')
 plt.show()
