@@ -116,9 +116,12 @@ class ControlAffineSystem(ABC):
 
         return ds
 
-    def step(self, s: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
+    def step(self, s: torch.Tensor, u: torch.Tensor, dt=None) -> torch.Tensor:
         ds = self.dsdt(s, u)
-        s_next = s + ds * self.dt
+        if dt is None:
+            s_next = s + ds * self.dt
+        else:
+            s_next = s + ds * dt
         return s_next
 
 
@@ -136,7 +139,7 @@ class ControlAffineSystem(ABC):
     @property
     def control_limits(self) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Return a tuple (upper, lower) describing the range of allowable control
+        Return a tuple ( upper: (nu,), lower: (nu,) ) describing the range of allowable control
         limits for this system
         """
         # define upper and lower limits based around the nominal equilibrium input

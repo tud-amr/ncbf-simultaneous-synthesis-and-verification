@@ -4,6 +4,7 @@ from typing import Tuple, List, Optional
 import json
 import time
 import copy
+import itertools
 
 import torch
 from torch import nn
@@ -27,6 +28,7 @@ from matplotlib.ticker import LinearLocator
 import matplotlib.pyplot as plt
 
 from DataModule import DataModule
+from ValueFunctionNeuralNetwork import ValueFunctionNeuralNetwork
 from control_affine_system import ControlAffineSystem
 
 from dynamic_system_instances import car1, inverted_pendulum_1
@@ -39,6 +41,7 @@ class NeuralNetwork(pl.LightningModule):
         self,
         dynamic_system: ControlAffineSystem,
         data_module: DataModule,
+        value_function: ValueFunctionNeuralNetwork,
         require_grad_descent_loss :bool = True,
         learn_shape_epochs: int = 10,
         primal_learning_rate: float = 1e-3,
@@ -57,14 +60,18 @@ class NeuralNetwork(pl.LightningModule):
         self.require_grad_descent_loss = require_grad_descent_loss
         self.flatten = nn.Flatten()
         self.h = nn.Sequential(
-            nn.Linear(2, 48),
+            nn.Linear(2, 256),
             nn.ReLU(),
-            nn.Linear(48, 48),
+            nn.Linear(256, 128),
             nn.ReLU(),
-            nn.Linear(48, 16),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 16),
             nn.ReLU(),
             nn.Linear(16,1)
         )
+
+        self.g = value_function
         
         u_lower, u_upper = self.dynamic_system.control_limits
         self.u_v =[u_lower.item(), u_upper.item()]
@@ -74,7 +81,7 @@ class NeuralNetwork(pl.LightningModule):
         self.clf_relaxation_penalty = clf_relaxation_penalty
         self.training_stage = 0
 
-        self.generate_cvx_solver()
+        # self.generate_cvx_solver()
 
 
     
@@ -113,7 +120,7 @@ class NeuralNetwork(pl.LightningModule):
         # We need to initialize the Jacobian to reflect the normalization that's already
         # been done to x
 
-        x_norm = x # self.normalize(x)
+        x_norm = x 
 
         bs = x_norm.shape[0]
         JV = torch.zeros(
@@ -137,6 +144,45 @@ class NeuralNetwork(pl.LightningModule):
 
         return V, JV
 
+
+    def G_with_jacobian(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Computes the CLBF value and its Jacobian
+
+        args:
+            x: bs x self.dynamics_model.n_dims the points at which to evaluate the CLBF
+        returns:
+            V: bs tensor of CLBF values
+            JV: bs x 1 x self.dynamics_model.n_dims Jacobian of each row of V wrt x
+        """
+
+        # Compute the CLBF layer-by-layer, computing the Jacobian alongside
+
+        # We need to initialize the Jacobian to reflect the normalization that's already
+        # been done to x
+
+        x_norm = x
+
+        bs = x_norm.shape[0]
+        JV = torch.zeros(
+            (bs, self.dynamic_system.ns, self.dynamic_system.ns)
+        ).type_as(x)
+        # and for each non-angle dimension, we need to scale by the normalization
+        for dim in range(self.dynamic_system.ns):
+            JV[:, dim, dim] = 1.0
+
+        # Now step through each layer in V
+        V = x_norm
+        for layer in self.g:
+            V = layer(V)
+
+            if isinstance(layer, nn.Linear):
+                JV = torch.matmul(layer.weight, JV)
+            elif isinstance(layer, nn.Tanh):
+                JV = torch.matmul(torch.diag_embed(1 - V ** 2), JV)
+            elif isinstance(layer, nn.ReLU):
+                JV = torch.matmul(torch.diag_embed(torch.sign(V)), JV)
+
+        return V, JV
 
     def V_lie_derivatives(
         self, x: torch.Tensor
@@ -265,6 +311,9 @@ class NeuralNetwork(pl.LightningModule):
         # First figure out where this condition needs to hold
         eps = 0.1
         H = self.h(s)
+
+        positive_mask = (H >= -0.5)
+
         condition_active = torch.sigmoid(10 * (1.0 + eps - H))
 
         u_qp, qp_relaxation = self.solve_CLF_QP(s, requires_grad=requires_grad, epsilon=0)
@@ -272,7 +321,7 @@ class NeuralNetwork(pl.LightningModule):
         qp_relaxation = torch.mean(qp_relaxation, dim=-1)
 
         ####### Minimize the qp relaxation to encourage satisfying the decrease condition #################
-        qp_relaxation_loss = qp_relaxation.mean()
+        qp_relaxation_loss = qp_relaxation[torch.logical_not(unsafe_mask)].mean()
         loss.append(("QP_relaxation", qp_relaxation_loss))
 
         ############### Now compute the decrease using linearization #######################
@@ -326,7 +375,7 @@ class NeuralNetwork(pl.LightningModule):
         ################################# compute bound on epsilon area #####################################
         
         bs = s.shape[0]
-        gridding_gap = self.data_module.train_grid_gap
+        gridding_gap = self.data_module.train_grid_gap/2
         # define perturbation
         perturbation = PerturbationLpNorm(norm=np.inf, eps=gridding_gap)
         # define perturbed data
@@ -528,6 +577,20 @@ class NeuralNetwork(pl.LightningModule):
         
         return loss 
 
+    def value_function_loss(self,
+        s : torch.Tensor,
+        safe_mask: torch.Tensor,
+        unsafe_mask: torch.Tensor,
+    ):
+        loss = []
+        gs = self.g(s)
+
+        gs_hat, _ = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True)
+        # print(gs_hat)
+        loss_term = F.relu( torch.norm( gs - gs_hat, p=2) - 0.3 )
+        loss.append(("value_function_loss_term", loss_term))
+        
+        return loss
 
     def V_lie_derivatives(
         self, x: torch.Tensor
@@ -546,6 +609,41 @@ class NeuralNetwork(pl.LightningModule):
 
         # Get the Jacobian of V for each entry in the batch
         _, gradh = self.V_with_jacobian(x)
+        # print(f"gradh shape is {gradh.shape}")
+        # We need to compute Lie derivatives for each scenario
+        batch_size = x.shape[0]
+        Lf_V = torch.zeros(batch_size, 2, 1)
+        Lg_V = torch.zeros(batch_size, 2, 1)
+
+        f = self.dynamic_system.f(x)
+        g = self.dynamic_system.g(x)
+        # print(f"f shape is {f.shape}")
+        # print(f"g shape is {g.shape}")
+
+        Lf_V = torch.bmm(gradh, f.unsqueeze(dim=-1)).squeeze(1)
+        Lg_V = torch.bmm(gradh, g).squeeze(1)
+        # print(f"Lf_V shape is {Lf_V.shape}")
+        # print(f"Lg_V shape is {Lg_V.shape}")
+        
+        return Lf_V, Lg_V
+
+    def G_lie_derivatives(
+        self, x: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Compute the Lie derivatives of the CLF V along the control-affine dynamics
+
+        args:
+            x: bs x self.dynamics_model.n_dims tensor of state
+            
+        returns:
+            Lf_V: bs x len(scenarios) x 1 tensor of Lie derivatives of V
+                  along f
+            Lg_V: bs x len(scenarios) x self.dynamics_model.n_controls tensor
+                  of Lie derivatives of V along g
+        """
+
+        # Get the Jacobian of V for each entry in the batch
+        _, gradh = self.G_with_jacobian(x)
         # print(f"gradh shape is {gradh.shape}")
         # We need to compute Lie derivatives for each scenario
         batch_size = x.shape[0]
@@ -906,8 +1004,7 @@ class NeuralNetwork(pl.LightningModule):
         
         return u_delta[:, 0:1], u_delta[:, 1:2]
 
-
-
+   
     def test(self, x, relaxation_penalty=1000, epsilon=0.1):
         H = self.h(x)
         Lf_V, Lg_V = self.V_lie_derivatives(x)
@@ -942,26 +1039,138 @@ class NeuralNetwork(pl.LightningModule):
         
         return violation
 
-
-    def normalize(
-        self, x: torch.Tensor, k: float = 1.0
-    ) -> torch.Tensor:
-        """Normalize the state input to [-k, k]
+    def get_nominal_control2(
+        self,
+        x: torch.Tensor,
+        Lg_V: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Determine the control input for a given state using a QP. Solves the QP using
+        Gurobi, which does not allow for backpropagation.
 
         args:
-            dynamics_model: the dynamics model matching the provided states
-            x: bs x self.dynamics_model.n_dims the points to normalize
-            k: normalize non-angle dimensions to [-k, k]
+            x: bs x self.dynamics_model.n_dims tensor of state
+            u_ref: bs x self.dynamics_model.n_controls tensor of reference controls
+            V: bs x 1 tensor of CLF values,
+            Lf_V: bs x 1 tensor of CLF Lie derivatives,
+            Lg_V: bs x self.dynamics_model.n_controls tensor of CLF Lie derivatives,
+            relaxation_penalty: the penalty to use for CLF relaxation.
+        returns:
+            u: bs x self.dynamics_model.n_controls tensor of control inputs
+            relaxation: bs x 1 tensor of how much the CLF had to be relaxed in each
+                        case
         """
-        x_min, x_max = self.dynamic_system.domain_limits
-        x_center = (x_max + x_min) / 2.0
-        x_range = (x_max - x_min) / 2.0
-        # Scale to get the input between (-k, k), centered at 0
-        x_range = x_range / k
+        # To find the control input, we want to solve a QP constrained by
+        #
+        # -(L_f V + L_g V u + lambda V) <= 0
+        #
+        # To ensure that this QP is always feasible, we relax the constraint
+        #
+        #  -(L_f V + L_g V u + lambda V) - r <= 0
+        #                              r >= 0
+        #
+        # and add the cost term relaxation_penalty * r.
+        #
+        # We want the objective to be to minimize
+        #
+        #           ||u||^2 + relaxation_penalty * r^2
+        #
+        # This reduces to (ignoring constant terms)
+        #
+        #           u^T I u + relaxation_penalty * r^2
+
+        n_controls = 1
+        
+       
+        # Solve a QP for each row in x
+        bs = x.shape[0]
+        u_result = torch.zeros(bs, n_controls)
+        for batch_idx in range(bs):
+            # Skip any bad points
+            if (
+                torch.isnan(x[batch_idx]).any()
+                or torch.isinf(x[batch_idx]).any()
+                or torch.isnan(Lg_V[batch_idx]).any()
+                or torch.isinf(Lg_V[batch_idx]).any()
+            ):
+                continue
+
+            # Instantiate the model
+            with gp.Env(empty=True) as env:
+                env.setParam('OutputFlag', 0)
+                env.start()
+                with gp.Model("clf_qp", env=env) as model:
+                    
+                    # Create variables for control input and (optionally) the relaxations
+                    lower_lim, upper_lim = self.dynamic_system.control_limits
+                    upper_lim = upper_lim.cpu().numpy()
+                    lower_lim = lower_lim.cpu().numpy()
+                    u = model.addMVar(n_controls, lb=lower_lim-2, ub=upper_lim+2)
+                    
+
+                    # Define the cost
+                    Lg_V_np = Lg_V[batch_idx, 0].detach().cpu().numpy()
+                    objective =   -(Lg_V_np * u)
+
+                    # Optimize!
+                    model.setParam("DualReductions", 0)
+                    model.setObjective(objective, GRB.MINIMIZE)
+                    model.optimize()
+
+                    if model.status != GRB.OPTIMAL:
+                        # Make the relaxations nan if the problem was infeasible, as a signal
+                        # that something has gone wrong
+                        continue
+
+                    # Extract the results
+                    for i in range(n_controls):
+                        u_result[batch_idx, i] = torch.tensor(u[i].x)
+
+        return u_result.type_as(x)
 
 
-        # Do the normalization
-        return (x - x_center.type_as(x)) / x_range.type_as(x)
+    def get_nominal_control(self, s):
+        lower_lim, upper_lim = self.dynamic_system.control_limits
+        control_area = torch.hstack((lower_lim.unsqueeze(dim=-1), upper_lim.unsqueeze(dim=-1)))
+        # print(control_area.shape)
+        
+        nu = self.dynamic_system.nu
+        vertices = list(itertools.product([0, 1], repeat=nu))
+        vertices = torch.tensor(vertices)
+        # print(vertices)
+
+        u_list = []
+        gs_list = []
+        for v in vertices:
+            index = torch.hstack( (torch.arange(0, nu, 1, dtype=torch.uint8).unsqueeze(dim=-1), v.unsqueeze(dim=-1)) )
+            # print(index)
+            u = control_area[index[:,0], index[:,1]]
+            u_ex = u.expand(s.shape[0], nu).to(s.device)
+            s_next = self.dynamic_system.step(s, u_ex, dt=0.1)
+            gs_hat, _ = torch.min(self.dynamic_system.state_constraints(s_next), dim=1, keepdim=True)
+
+            
+            u_list.append(u)
+            gs_list.append(gs_hat)
+
+        u_list = torch.tensor(u_list)
+        gs_list = torch.hstack(gs_list)
+
+        _, index = torch.max(gs_list, dim=1)
+
+        u = u_list[index]
+
+        # print(s)
+        # print(gs_list)
+        # print(u)
+        #print(index)
+
+        # print(gs_list.shape)
+        
+        # print(u_list.shape)
+        return u.unsqueeze(dim=1)
+            
+
+
 
     def nominal_controller(self, s):
         batch_size = s.shape[0]
@@ -972,6 +1181,13 @@ class NeuralNetwork(pl.LightningModule):
         u = -torch.bmm(K, s.unsqueeze(dim=-1))
         # u_lower_bd ,  u_upper_bd = self.dynamic_system.control_limits
         # u = torch.clip(u, u_lower_bd.to(s.device), u_upper_bd.to(s.device))
+        
+        # _, Lg_V = self.g.G_lie_derivatives(s)
+
+        u_new = self.get_nominal_control(s)
+        
+        # print(f"u = {u}, u_new = {u_new}")
+        
         return u.squeeze(dim=-1)
     
     def on_train_start(self) -> None:
@@ -997,11 +1213,13 @@ class NeuralNetwork(pl.LightningModule):
 
         # Compute the losses
         component_losses = {}
+
         
         if self.training_stage == 0:
             component_losses.update(
                 self.boundary_loss(s, safe_mask, unsafe_mask)
             )
+        
 
         if self.training_stage == 1:
             component_losses.update(
@@ -1015,7 +1233,7 @@ class NeuralNetwork(pl.LightningModule):
             )
 
         if self.training_stage == 2:
-            coefficient_for_safe_state_loss = max(40 * (1 - self.current_epoch/200), 1)
+            coefficient_for_safe_state_loss = max(40 * (1 - (self.current_epoch-self.epoch_record)/200), 1)
             component_losses.update(
                 self.boundary_loss(s, safe_mask, unsafe_mask, coefficient_for_safe_state_loss=coefficient_for_safe_state_loss, coefficient_for_unsafe_state_loss=1e2)
             )
@@ -1038,7 +1256,7 @@ class NeuralNetwork(pl.LightningModule):
             if not torch.isnan(loss_value):
                 total_loss += loss_value
 
-        print(f"current training stage is {self.training_stage}")
+        # print(f"current training stage is {self.training_stage}")
 
         batch_dict = {"loss": total_loss, **component_losses}
 
@@ -1076,6 +1294,8 @@ class NeuralNetwork(pl.LightningModule):
 
         safety_losses = 0
         performance_losses = 0
+        value_function_loss = 0
+        value_function_loss_name = ['value_function_loss_term']
         safety_loss_name = ['unsafe_region_term', 'descent_term_linearized', 
                             'descent_term_simulated','descent_term_epsilon_area','unsafe_region_epsilon_term']
         performance_lose_name = ['safe_region_term']
@@ -1084,6 +1304,8 @@ class NeuralNetwork(pl.LightningModule):
                 safety_losses += avg_losses[key]
             if key in performance_lose_name:
                 performance_losses += avg_losses[key]
+            if key in value_function_loss_name:
+                value_function_loss += avg_losses[key]
 
 
         # Log the overall loss...
@@ -1092,6 +1314,8 @@ class NeuralNetwork(pl.LightningModule):
         print(f"\n the overall loss of this training epoch {avg_losses['loss']}\n")
         self.log("Epoch_time/train", self.epoch_end_time - self.epoch_start_time)
         print(f"the epoch time consume is {self.epoch_end_time - self.epoch_start_time}")
+        # self.log("Value_function_loss/train", value_function_loss)
+        # print(f"overall value function loss of this training epoch {value_function_loss}")
         self.log("Safety_loss/train", safety_losses)
         print(f"overall safety loss of this training epoch {safety_losses}")
         self.log("Performance_loss/train", performance_losses)
@@ -1104,10 +1328,12 @@ class NeuralNetwork(pl.LightningModule):
             # Log the other losses
             self.log(loss_key + "/train", avg_losses[loss_key], sync_dist=True)
 
-        if self.training_stage == 0 and (avg_losses["loss"] < 1 or  self.current_epoch > 10): # just satisfy condition 1 and 2
+        if self.training_stage == 0 and (avg_losses["loss"] < 1.5): # warm up, shape h and g
             self.training_stage = 1  # start to consider condition 3
-        elif self.training_stage == 1 and (avg_losses["loss"] < 1 or self.current_epoch > 20): 
+            self.epoch_record = self.current_epoch
+        elif self.training_stage == 1 and (avg_losses["loss"] < 1 or (self.current_epoch - self.epoch_record) > 30): 
             self.training_stage = 2 # start to consider epsilon loss
+            self.epoch_record = self.current_epoch
         print(f"current training stage is {self.training_stage}")
 
     def validation_step(self, batch, batch_idx):
@@ -1196,12 +1422,17 @@ class NeuralNetwork(pl.LightningModule):
         x, safe_mask, unsafe_mask = batch
 
         # Get the various losses
-        batch_dict = {"shape_h": {},"safe_violation": {}, "unsafe_violation": {}, "descent_violation": {}, "safe_boundary":{} }
+        batch_dict = {"shape_h": {}, "shape_g": {},"safe_violation": {}, "unsafe_violation": {}, "descent_violation": {}, "safe_boundary":{} }
         
         # record shape_h
         h_x = self.h(x)
         batch_dict["shape_h"]["state"] = x
         batch_dict["shape_h"]["val"] = h_x
+
+        # record shape_g
+        g_x = self.g(x)
+        batch_dict["shape_g"]["state"] = x
+        batch_dict["shape_g"]["val"] = g_x
 
         # record safe_violation
         
@@ -1268,7 +1499,7 @@ class NeuralNetwork(pl.LightningModule):
 
 
     def configure_optimizers(self):
-        clbf_params = list(self.h.parameters())  #+ list(self.V.parameters())
+        clbf_params = list(self.h.parameters()) + list(self.g.parameters())
         clbf_opt = torch.optim.SGD(
             clbf_params,
             lr=self.primal_learning_rate,
@@ -1285,26 +1516,28 @@ if __name__ == "__main__":
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
-    s0 = torch.rand(1, 2, dtype=torch.float)
+    s0 = torch.rand(5, 2, dtype=torch.float).to(device) * 3 - 1.5
 
     data_module = DataModule(system=inverted_pendulum_1, train_grid_gap=0.3, test_grid_gap=0.3)
 
-    NN = NeuralNetwork(dynamic_system=inverted_pendulum_1, data_module=data_module).to(device)
+    
+    G = ValueFunctionNeuralNetwork.load_from_checkpoint("/home/wangxinyu/.mujoco/mujoco210/sunny_test/masterthesis_test/CBF_logs/train_g/lightning_logs/version_0/checkpoints/epoch=399-step=4800.ckpt", dynamic_system=inverted_pendulum_1, data_module=data_module)
+    G.to(device)
+   
+    # NN = NeuralNetwork.load_from_checkpoint("/home/wangxinyu/.mujoco/mujoco210/sunny_test/masterthesis_test/CBF_logs/robust_training_maximum/lightning_logs/version_1/checkpoints/epoch=199-step=2400.ckpt", dynamic_system=inverted_pendulum_1, data_module=data_module, value_function=G)
+    NN = NeuralNetwork(dynamic_system=inverted_pendulum_1, data_module=data_module, value_function=G).to(device)
+    NN.to(device)
 
-    # NN.test(s0)
+     # NN.test(s0)
 
     NN.prepare_data()
     n_sample = 3
-    # u_nominal = NN.nominal_controller(s0)
+    u_nominal = NN.nominal_controller(s0)
     # NN.boundary_loss(NN.data_module.s_training, NN.data_module.safe_mask_training, NN.data_module.unsafe_mask_training, accuracy=True)
-    NN.descent_loss(NN.data_module.s_training[0:n_sample,:].to(device), NN.data_module.safe_mask_training[0:n_sample].to(device), NN.data_module.unsafe_mask_training[0:n_sample].to(device), requires_grad=True)
-    # # NN.V_loss(NN.data_module.s_training, NN.data_module.safe_mask_training, NN.data_module.unsafe_mask_training)
-
+    # NN.descent_loss(NN.data_module.s_training[0:n_sample,:].to(device), NN.data_module.safe_mask_training[0:n_sample].to(device), NN.data_module.unsafe_mask_training[0:n_sample].to(device), requires_grad=True)
+    # NN.V_loss(NN.data_module.s_training, NN.data_module.safe_mask_training, NN.data_module.unsafe_mask_training)
+    # NN.value_function_loss(NN.data_module.s_training[0:n_sample,:].to(device), NN.data_module.safe_mask_training[0:n_sample].to(device), NN.data_module.unsafe_mask_training[0:n_sample].to(device))
     del NN
-
-# def myCustomLoss(h_bar_s, C_bar_s, epsilon = 0.01):
-    
-#     return (torch.sgn(h_bar_s) + 1)/2 * torch.relu(-C_bar_s+epsilon)
 
 
 

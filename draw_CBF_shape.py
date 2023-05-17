@@ -30,7 +30,8 @@ s_training = data_module.s_training
 
 h_shape_s = []
 h_shape_val = []
-
+g_shape_s = []
+g_shape_val = []
 s_safe_violation = []
 s_safe_violation_val = []
 s_unsafe_violation = []
@@ -43,6 +44,8 @@ safe_boundary_state = []
 for batch_id in range(len(test_results)):
     h_shape_s.append(test_results[batch_id]["shape_h"]["state"])
     h_shape_val.append(test_results[batch_id]["shape_h"]["val"])
+#     g_shape_s.append(test_results[batch_id]["shape_g"]["state"])
+#     g_shape_val.append(test_results[batch_id]["shape_g"]["val"])
     s_safe_violation.append(test_results[batch_id]["safe_violation"]["state"])
     s_unsafe_violation.append(test_results[batch_id]["unsafe_violation"]["state"])
     descent_violation.append(test_results[batch_id]["descent_violation"]["state"])
@@ -50,6 +53,8 @@ for batch_id in range(len(test_results)):
 
 h_shape_s = torch.vstack(h_shape_s)
 h_shape_val = torch.vstack(h_shape_val)
+# g_shape_s = torch.vstack(g_shape_s)
+# g_shape_val = torch.vstack(g_shape_val)
 s_safe_violation = torch.vstack(s_safe_violation)
 s_unsafe_violation = torch.vstack(s_unsafe_violation)
 descent_violation = torch.vstack(descent_violation)
@@ -58,7 +63,7 @@ safe_boundary_state = torch.vstack(safe_boundary_state)
 
 ########################## start to plot #############################
 
-############################### plot shape of barrier function ##############################
+############################### plot shape of function l(x) ##############################
 
 
 
@@ -86,6 +91,8 @@ contours2 = plt.contour(hVS0_XData, hVS0_YData, hVS0_ZData)
 
 # Display z values on contour lines
 plt.clabel(contours2, inline=1, fontsize=10)
+
+############################### plot shape of barrier function ##############################
 
 plt.figure()
 
@@ -128,7 +135,7 @@ x_unsafe2 = - np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
 safe_boundary_state = safe_boundary_state.cpu().numpy()
 # plt.scatter(safe_boundary_state[:, 0], safe_boundary_state[:,1], s=0.5, c='y')
 
-plt.scatter(s_training[:,0], s_training[:,1], marker='X', s=10, c='k')
+# plt.scatter(s_training[:,0], s_training[:,1], marker='X', s=10, c='k')
 
 
 # custom legend
@@ -260,7 +267,7 @@ plt.plot(x_unsafe2, u_unsafe, c='y', linewidth=2)
 # plt.scatter(safe_boundary_state[:, 0], safe_boundary_state[:,1], s=0.5, c='y')
 
 plt.scatter(X_descent, U_descent, s=10, c='r')
-plt.show()
+
 # descent_violation_df = pd.DataFrame({"x": X_descent, "u": U_descent}, index=range(0, X_descent.shape[0]))
 # fig, ax = plt.subplots()
 # sns.scatterplot(data=descent_violation_df, x="x", y="u", marker="X", ax=ax)
@@ -271,6 +278,33 @@ plt.show()
 # ax.set_ylim(-2, 2)
 
 
+
+#################### plot shape of g(x) ###############
+# X = g_shape_s[:, 0].cpu().numpy()
+# X_g = X.reshape((math.gcd(X.shape[0], 1000), -1))
+# U_g = g_shape_s[:, 1].cpu().numpy().reshape((math.gcd(X.shape[0], 1000), -1))
+# G = g_shape_val.squeeze(dim=1).cpu().numpy().reshape((math.gcd(X.shape[0], 1000), -1))
+
+
+# fig3, ax3 = plt.subplots(subplot_kw={"projection": "3d"})
+
+# ax3.set_xlim(-np.pi, np.pi)
+# ax3.set_ylim(-5, 5)
+# ax3.set_zlim(-1, 3)
+
+# ax3.set_title("shape of CBF")
+# ax3.set_xlabel(r"$\theta$")
+# ax3.set_ylabel(r"$\dot{\theta}$")
+# ax3.set_zlabel(r"$g(x)$")
+
+# ax3.xaxis._axinfo["grid"].update({"linewidth": 0})
+# ax3.yaxis._axinfo["grid"].update({"linewidth": 0})
+# ax3.zaxis._axinfo["grid"].update({"linewidth": 0})
+
+# ax3.plot_surface(X_g, U_g, G, color='#FF00FF', alpha=0.5)
+
+
+plt.show()
 ############### end #####################
 
 
