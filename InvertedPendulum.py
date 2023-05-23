@@ -3,7 +3,7 @@ from typing import Tuple, Optional, Union
 import torch
 from torch import nn
 import torch.nn.functional as F
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 
 import numpy as np
 import control

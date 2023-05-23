@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 from torch import nn
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 
 from MyNeuralNetwork import *
 from dynamic_system_instances import car1, inverted_pendulum_1

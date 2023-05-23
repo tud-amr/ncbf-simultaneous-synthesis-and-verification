@@ -8,7 +8,7 @@ import copy
 import torch
 from torch import nn
 import torch.nn.functional as F
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 from torch.autograd import Variable
 from torch.nn.parameter import Parameter
 

@@ -1,7 +1,7 @@
 from typing import List, Callable, Tuple, Dict, Optional
 
 import torch
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 from torch.utils.data import TensorDataset, DataLoader
 from dynamic_system_instances import car1, inverted_pendulum_1
 from control_affine_system import ControlAffineSystem

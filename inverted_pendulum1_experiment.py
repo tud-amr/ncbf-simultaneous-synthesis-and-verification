@@ -3,7 +3,7 @@ from MyNeuralNetwork import *
 from DataModule import DataModule
 from dynamic_system_instances import inverted_pendulum_1
 import torch
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 import matplotlib.pyplot as plt 
 
 

@@ -2,8 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 from torch import nn
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+import lightning.pytorch as pl
+from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 
 from matplotlib import cm
 from matplotlib.ticker import LinearLocator
@@ -50,7 +50,7 @@ if train_mode == 'train_h':
         devices = 1,
         max_epochs=400,
         callbacks=[ EarlyStopping(monitor="Safety_loss/train", mode="min", check_on_train_epoch_end=True, strict=False, patience=50, stopping_threshold=1e-3) ], 
-        default_root_dir=default_root_dir,
+        # default_root_dir=default_root_dir,
         )
 
     torch.autograd.set_detect_anomaly(True)

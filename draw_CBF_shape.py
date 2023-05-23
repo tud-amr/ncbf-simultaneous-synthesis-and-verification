@@ -3,7 +3,7 @@ import math
 import matplotlib.pyplot as plt
 import torch
 from torch import nn
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 import seaborn as sns
 import pandas as pd
 from matplotlib.patches import Patch
