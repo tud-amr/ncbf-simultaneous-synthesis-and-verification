@@ -281,6 +281,7 @@ class NeuralNetwork(pl.LightningModule):
         s: torch.Tensor,
         safe_mask: torch.Tensor,
         unsafe_mask: torch.Tensor,
+        grid_gap: torch.Tensor,
         model: BoundedModule,
         model_jacobian: BoundedModule,
         coefficients_descent_loss: float=1e2,
@@ -375,9 +376,12 @@ class NeuralNetwork(pl.LightningModule):
         ################################# compute bound on epsilon area #####################################
         
         bs = s.shape[0]
-        gridding_gap = self.data_module.train_grid_gap/2
+        gridding_gap = grid_gap/2
+        data_l = s - gridding_gap
+        data_u = s + gridding_gap
+        
         # define perturbation
-        perturbation = PerturbationLpNorm(norm=np.inf, eps=gridding_gap)
+        perturbation = PerturbationLpNorm(norm=np.inf, x_L=data_l, x_U=data_u)
         # define perturbed data
         x = BoundedTensor(s, perturbation)
         
@@ -394,17 +398,34 @@ class NeuralNetwork(pl.LightningModule):
         
         ########### A_J_lower upper
 
-        # jacobian_lower, jacobian_upper = model_jacobian.compute_jacobian_bounds(x)
+        jacobian_lower, jacobian_upper = model_jacobian.compute_jacobian_bounds(x)
         # print(f"lower_jacobian is {jacobian_lower}")
         # print(f"upper_jacobian is {jacobian_upper}")
-        # lb_j = jacobian_lower.reshape(bs, -1).to(s.device)
-        # ub_j = jacobian_upper.reshape(bs, -1).to(s.device)
+        lb_j = jacobian_lower.reshape(bs, -1).to(s.device)
+        ub_j = jacobian_upper.reshape(bs, -1).to(s.device)
         # print(f"lb_j is {lb_j}")
         # print(f"ub_j is {ub_j}")
+
+        # get the indices that two vectors are both positive or negative
+        indices = torch.logical_not( torch.all(lb_j * ub_j > 0, dim=1) ) 
+        print(f"indices is {indices}")
+        # get the indices that is True
+        indices = torch.nonzero(indices, as_tuple=True)
+        print(f"indices is {indices}")
+
+        # get the corresponding states
+        s_bad = s[indices]
+        if self.training_stage == 2:
+            for i in range(s_bad.shape[0]):
+                data = (s_bad[i].unsqueeze(dim=0), grid_gap[i].unsqueeze(dim=0))
+                node = self.data_module.new_tree.get_node(self.data_module.uniname_of_data(data))
+                self.data_module.expand_leave(node)
+
         
+
         _, J_s = self.V_with_jacobian(s)
         # print(f"jacobian at s is {J_s}")
-        # print(f"jacobian at s shape is {J_s.shape}")
+        print(f"jacobian at s shape is {J_s.shape}")
 
         ########## A_f_lower
         ns = self.dynamic_system.ns
@@ -417,7 +438,7 @@ class NeuralNetwork(pl.LightningModule):
 
         b_f_lower = torch.zeros(bs, ns, 1).to(s.device)
         b_f_lower[:, 0, 0] = 0
-        b_f_lower[:, 1, 0] = self.dynamic_system.gravity*( torch.sin(s[:, 0]) - torch.cos(s[:, 0])*s[:, 0] -gridding_gap) /self.dynamic_system.L
+        b_f_lower[:, 1, 0] = self.dynamic_system.gravity*( torch.sin(s[:, 0]) - torch.cos(s[:, 0])*s[:, 0] -gridding_gap[:, 0]) /self.dynamic_system.L
         # print(f"b_f_lower is {b_f_lower}")
 
         # s_eps = s - gridding_gap
@@ -439,7 +460,7 @@ class NeuralNetwork(pl.LightningModule):
 
         b_f_upper = torch.zeros(bs, ns, 1).to(s.device)
         b_f_upper[:, 0, 0] = 0
-        b_f_upper[:, 1, 0] = self.dynamic_system.gravity*( torch.sin(s[:, 0]) - torch.cos(s[:, 0])*s[:, 0] + gridding_gap) /self.dynamic_system.L
+        b_f_upper[:, 1, 0] = self.dynamic_system.gravity*( torch.sin(s[:, 0]) - torch.cos(s[:, 0])*s[:, 0] + gridding_gap[:, 0]) /self.dynamic_system.L
         # print(f"b_f_upper is {b_f_upper}")
 
         # f_s_upper = torch.bmm(A_f_upper, s_eps.unsqueeze(dim=-1)) + b_f_upper
@@ -551,6 +572,7 @@ class NeuralNetwork(pl.LightningModule):
         s : torch.Tensor,
         safe_mask: torch.Tensor,
         unsafe_mask: torch.Tensor,
+        grid_gap: torch.Tensor,
         model: BoundedModule,
         coefficients_unsafe_epsilon_loss: float=1e2,
     ) -> List[Tuple[str, torch.Tensor]]:
@@ -1202,7 +1224,7 @@ class NeuralNetwork(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         """Conduct the training step for the given batch"""
         # Extract the input and masks from the batch
-        s, safe_mask, unsafe_mask = batch
+        s, safe_mask, unsafe_mask, grid_gap = batch
         model = BoundedModule(self.h, s)
         model.train()
 
@@ -1228,7 +1250,7 @@ class NeuralNetwork(pl.LightningModule):
             
             component_losses.update(
                 self.descent_loss(
-                    s, safe_mask, unsafe_mask, model, model_jacobian, requires_grad=self.require_grad_descent_loss
+                    s, safe_mask, unsafe_mask, grid_gap, model, model_jacobian, requires_grad=self.require_grad_descent_loss
                 )
             )
 
@@ -1240,11 +1262,11 @@ class NeuralNetwork(pl.LightningModule):
 
             component_losses.update(
                 self.descent_loss(
-                    s, safe_mask, unsafe_mask, model, model_jacobian, coefficients_descent_loss=1e2, requires_grad=self.require_grad_descent_loss
+                    s, safe_mask, unsafe_mask, grid_gap, model, model_jacobian, coefficients_descent_loss=1e2, requires_grad=self.require_grad_descent_loss
                 )
             )
             component_losses.update(
-                 self.epsilon_area_loss(s, safe_mask, unsafe_mask, model, coefficients_unsafe_epsilon_loss=1e2)
+                 self.epsilon_area_loss(s, safe_mask, unsafe_mask, grid_gap,model, coefficients_unsafe_epsilon_loss=1e2)
             )
 
         
@@ -1336,10 +1358,12 @@ class NeuralNetwork(pl.LightningModule):
             self.epoch_record = self.current_epoch
         print(f"current training stage is {self.training_stage}")
 
+        self.prepare_data()
+
     def validation_step(self, batch, batch_idx):
         """Conduct the validation step for the given batch"""
         # Extract the input and masks from the batch
-        x, safe_mask, unsafe_mask = batch
+        x, safe_mask, unsafe_mask, _ = batch
 
         # Get the various losses
         component_losses = {}
@@ -1419,7 +1443,7 @@ class NeuralNetwork(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         """Conduct the validation step for the given batch"""
         # Extract the input and masks from the batch
-        x, safe_mask, unsafe_mask = batch
+        x, safe_mask, unsafe_mask, _ = batch
 
         # Get the various losses
         batch_dict = {"shape_h": {}, "shape_g": {},"safe_violation": {}, "unsafe_violation": {}, "descent_violation": {}, "safe_boundary":{} }
@@ -1531,10 +1555,9 @@ if __name__ == "__main__":
      # NN.test(s0)
 
     NN.prepare_data()
-    n_sample = 3
-    u_nominal = NN.nominal_controller(s0)
+    n_sample = 10
     # NN.boundary_loss(NN.data_module.s_training, NN.data_module.safe_mask_training, NN.data_module.unsafe_mask_training, accuracy=True)
-    # NN.descent_loss(NN.data_module.s_training[0:n_sample,:].to(device), NN.data_module.safe_mask_training[0:n_sample].to(device), NN.data_module.unsafe_mask_training[0:n_sample].to(device), requires_grad=True)
+    NN.descent_loss(NN.data_module.s_training[0:n_sample,:].to(device), NN.data_module.safe_mask_training[0:n_sample].to(device), NN.data_module.unsafe_mask_training[0:n_sample].to(device), NN.data_module.grid_gap_training[0:n_sample].to(device),requires_grad=True)
     # NN.V_loss(NN.data_module.s_training, NN.data_module.safe_mask_training, NN.data_module.unsafe_mask_training)
     # NN.value_function_loss(NN.data_module.s_training[0:n_sample,:].to(device), NN.data_module.safe_mask_training[0:n_sample].to(device), NN.data_module.unsafe_mask_training[0:n_sample].to(device))
     del NN
