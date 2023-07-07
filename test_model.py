@@ -15,7 +15,7 @@ print(f"Using {device} device")
 data_module = DataModule(system=inverted_pendulum_1, val_split=0, train_batch_size=64, test_batch_size=128, train_grid_gap=0.3, test_grid_gap=0.01)
 
 
-NN = NeuralNetwork.load_from_checkpoint("CBF_logs/robust_training_maximum/lightning_logs/version_34/checkpoints/epoch=89-step=1480.ckpt", dynamic_system=inverted_pendulum_1, data_module=data_module)
+NN = NeuralNetwork.load_from_checkpoint("CBF_logs/robust_training_maximum/lightning_logs/version_56/checkpoints/epoch=39-step=735.ckpt", dynamic_system=inverted_pendulum_1, data_module=data_module)
 NN.to(device)
 
 trainer = pl.Trainer(accelerator = "gpu",

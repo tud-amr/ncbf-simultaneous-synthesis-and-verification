@@ -35,7 +35,7 @@ if train_mode == 'train_h':
         max_epochs=200,
         callbacks=[ EarlyStopping(monitor="Safety_loss/train", mode="min", check_on_train_epoch_end=True, strict=False, patience=50, stopping_threshold=1e-3) ], 
         default_root_dir=default_root_dir,
-        reload_dataloaders_every_n_epochs=20,
+        reload_dataloaders_every_n_epochs=3,
         )
 
     torch.autograd.set_detect_anomaly(True)
