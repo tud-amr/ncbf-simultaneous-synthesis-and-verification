@@ -40,11 +40,12 @@ class DataModule(pl.LightningDataModule):
         root_s = (domain_lower_bd+ domain_upper_bd )/2
         root_s = root_s.reshape(1, -1)
         root_grid_gap = domain_bd_gap.reshape(1, -1)
-        root_data = (root_s, root_grid_gap)
+        satisfy_constraint = True
+        root_data = [root_s, root_grid_gap, satisfy_constraint]
 
         self.new_tree.create_node(f"{self.new_tree.size()}", identifier=self.uniname_of_data(root_data), data=root_data)  # root node
 
-        while( self.get_minimum_grid_gap() > 0.3): 
+        while( self.get_minimum_grid_gap() > self.train_grid_gap): 
             for leave_node in self.new_tree.leaves():
                 self.expand_leave(leave_node)
 
@@ -132,19 +133,22 @@ class DataModule(pl.LightningDataModule):
     
 
     def expand_leave(self, leave_node):
-        if self.get_minimum_grid_gap() > 0.01:
-            leave_node_id = leave_node.identifier
-            leave_node_s = leave_node.data[0]
-            leave_node_grid_gap = leave_node.data[1]
+    
+        leave_node_id = leave_node.identifier
+        leave_node_s = leave_node.data[0]
+        leave_node_grid_gap = leave_node.data[1]
+
+        if torch.min(leave_node_grid_gap) > 0.1:
             s_dim = leave_node_s.shape[1]
             dir = torch.tensor([0.5, -0.5])
             combine = list(product(dir, repeat=s_dim))
 
             for i in range(len(combine)):
                 coefficent = torch.tensor(combine[i]).reshape(1, -1)
-                new_s = leave_node_s + leave_node_grid_gap * coefficent
+                new_s = leave_node_s + leave_node_grid_gap/2 * coefficent
                 new_grid_gap = leave_node_grid_gap / 2
-                new_data = (new_s, new_grid_gap)
+                satisfy_constraint = True
+                new_data = [new_s, new_grid_gap, satisfy_constraint]
                 self.new_tree.create_node(f"{self.new_tree.size()}", identifier=self.uniname_of_data(new_data), data=new_data, parent=leave_node_id)
 
     def get_minimum_grid_gap(self):
@@ -171,6 +175,10 @@ class DataModule(pl.LightningDataModule):
         sample_data = []
         sample_data_grid_gap = []
         
+        for leave_node in self.new_tree.leaves():
+            if leave_node.data[2] == False:
+                self.expand_leave(leave_node)
+
         for leave_node in self.new_tree.leaves():
             sample_data.append(leave_node.data[0])
             sample_data_grid_gap.append(leave_node.data[1])
@@ -251,6 +259,6 @@ class DataModule(pl.LightningDataModule):
         
 if __name__ == "__main__":
     
-    data_module = DataModule(system=inverted_pendulum_1, train_grid_gap=0.1, test_grid_gap=0.01)
+    data_module = DataModule(system=inverted_pendulum_1, train_grid_gap=0.3, test_grid_gap=0.01)
 
     data_module.prepare_data()

@@ -31,7 +31,21 @@ class Car(ControlAffineSystem):
         result =  torch.tensor([0, m], dtype=torch.float).reshape((self.ns, self.nu)).unsqueeze(dim=0).to(s.device) * torch.ones((s.shape[0], self.ns, self.nu), dtype=torch.float).to(s.device)
         return result
 
+    def range_dxdt(self, x_l: torch.Tensor, x_u:torch.Tensor,  u: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Return the range of dsdt(x,u) for all s in the batch.
 
+        args:
+            x_l, x_u: a tensor of (batch_size, self.n_dims) points in the state space
+            u: a tensor of (batch_size, self.n_controls) points in the control space
+        returns:
+            a tuple (lower, upper) of tensors of (batch_size, self.n_dims) points
+            giving the lower and upper bounds on dxdt(x,u) for all x in the batch.
+        """
+
+        print(f"x_l shape is {x_l.shape}")
+        print(f"x_u is {x_u.shape}")
+        pass
     
 
     

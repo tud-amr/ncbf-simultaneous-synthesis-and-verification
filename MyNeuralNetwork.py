@@ -28,7 +28,7 @@ from matplotlib.ticker import LinearLocator
 import matplotlib.pyplot as plt
 
 from DataModule import DataModule
-from ValueFunctionNeuralNetwork import ValueFunctionNeuralNetwork
+# from ValueFunctionNeuralNetwork import ValueFunctionNeuralNetwork
 from control_affine_system import ControlAffineSystem
 
 from dynamic_system_instances import car1, inverted_pendulum_1
@@ -41,7 +41,7 @@ class NeuralNetwork(pl.LightningModule):
         self,
         dynamic_system: ControlAffineSystem,
         data_module: DataModule,
-        value_function: ValueFunctionNeuralNetwork,
+        # value_function: ValueFunctionNeuralNetwork,
         require_grad_descent_loss :bool = True,
         learn_shape_epochs: int = 10,
         primal_learning_rate: float = 1e-3,
@@ -60,28 +60,27 @@ class NeuralNetwork(pl.LightningModule):
         self.require_grad_descent_loss = require_grad_descent_loss
         self.flatten = nn.Flatten()
         self.h = nn.Sequential(
-            nn.Linear(2, 256),
+            nn.Linear(2, 48),
             nn.ReLU(),
-            nn.Linear(256, 128),
+            nn.Linear(48, 48),
             nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 16),
+            nn.Linear(48, 16),
             nn.ReLU(),
             nn.Linear(16,1)
         )
 
-        self.g = value_function
+        # self.g = value_function
         
         u_lower, u_upper = self.dynamic_system.control_limits
         self.u_v =[u_lower.item(), u_upper.item()]
         
-        self.K = self.dynamic_system.K
+        # self.K = self.dynamic_system.K
         self.clf_lambda = clf_lambda
         self.clf_relaxation_penalty = clf_relaxation_penalty
         self.training_stage = 0
 
-        # self.generate_cvx_solver()
+        self.generate_cvx_solver()
+        self.generate_convex_relaxation_solver()
 
 
     
@@ -92,6 +91,7 @@ class NeuralNetwork(pl.LightningModule):
         return self.data_module.setup(stage)
 
     def train_dataloader(self):
+        self.prepare_data()
         return self.data_module.train_dataloader()
 
     def val_dataloader(self):
@@ -144,46 +144,6 @@ class NeuralNetwork(pl.LightningModule):
 
         return V, JV
 
-
-    def G_with_jacobian(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Computes the CLBF value and its Jacobian
-
-        args:
-            x: bs x self.dynamics_model.n_dims the points at which to evaluate the CLBF
-        returns:
-            V: bs tensor of CLBF values
-            JV: bs x 1 x self.dynamics_model.n_dims Jacobian of each row of V wrt x
-        """
-
-        # Compute the CLBF layer-by-layer, computing the Jacobian alongside
-
-        # We need to initialize the Jacobian to reflect the normalization that's already
-        # been done to x
-
-        x_norm = x
-
-        bs = x_norm.shape[0]
-        JV = torch.zeros(
-            (bs, self.dynamic_system.ns, self.dynamic_system.ns)
-        ).type_as(x)
-        # and for each non-angle dimension, we need to scale by the normalization
-        for dim in range(self.dynamic_system.ns):
-            JV[:, dim, dim] = 1.0
-
-        # Now step through each layer in V
-        V = x_norm
-        for layer in self.g:
-            V = layer(V)
-
-            if isinstance(layer, nn.Linear):
-                JV = torch.matmul(layer.weight, JV)
-            elif isinstance(layer, nn.Tanh):
-                JV = torch.matmul(torch.diag_embed(1 - V ** 2), JV)
-            elif isinstance(layer, nn.ReLU):
-                JV = torch.matmul(torch.diag_embed(torch.sign(V)), JV)
-
-        return V, JV
-
     def V_lie_derivatives(
         self, x: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -207,12 +167,12 @@ class NeuralNetwork(pl.LightningModule):
         Lf_V = torch.zeros(batch_size, 2, 1)
         Lg_V = torch.zeros(batch_size, 2, 1)
 
-        f = torch.unsqueeze(self.dynamic_system.f(x), dim=-1)
-        g = torch.unsqueeze(self.dynamic_system.g(x), dim=-1)
+        f = self.dynamic_system.f(x)
+        g = self.dynamic_system.g(x)
         # print(f"f shape is {f.shape}")
         # print(f"g shape is {g.shape}")
 
-        Lf_V = torch.bmm(gradh, f).squeeze(1)
+        Lf_V = torch.bmm(gradh, f.unsqueeze(dim=-1)).squeeze(1)
         Lg_V = torch.bmm(gradh, g).squeeze(1)
         # print(f"Lf_V shape is {Lf_V.shape}")
         # print(f"Lg_V shape is {Lg_V.shape}")
@@ -239,8 +199,7 @@ class NeuralNetwork(pl.LightningModule):
         returns:
             loss: a list of tuples containing ("category_name", loss_value).
         """
-        eps = 0
-
+        
         # Compute loss to encourage satisfaction of the following conditions...
         loss = []
 
@@ -248,6 +207,8 @@ class NeuralNetwork(pl.LightningModule):
 
         # 1.) h > 0 in the safe region
         hs_safe = hs[torch.logical_not(unsafe_mask)]
+        eps = torch.min(self.dynamic_system.state_constraints(s[torch.logical_not(unsafe_mask)]), dim=1, keepdim=True).values
+        
         safe_violation = coefficient_for_safe_state_loss *  F.relu( eps - hs_safe)
         safe_hs_term =  safe_violation.mean()
         if not torch.isnan(safe_hs_term):
@@ -258,7 +219,11 @@ class NeuralNetwork(pl.LightningModule):
 
         #   3.) h < 0 in the unsafe region
 
+       
+
         hs_unsafe = hs[unsafe_mask]
+        eps = -torch.min(self.dynamic_system.state_constraints(s[unsafe_mask]), dim=1, keepdim=True).values
+        
         unsafe_violation = coefficient_for_unsafe_state_loss *  F.relu(eps + hs_unsafe)
         
         unsafe_hs_term = unsafe_violation.mean() 
@@ -318,7 +283,7 @@ class NeuralNetwork(pl.LightningModule):
         condition_active = torch.sigmoid(10 * (1.0 + eps - H))
 
         u_qp, qp_relaxation = self.solve_CLF_QP(s, requires_grad=requires_grad, epsilon=0)
-
+        
         qp_relaxation = torch.mean(qp_relaxation, dim=-1)
 
         ####### Minimize the qp relaxation to encourage satisfying the decrease condition #################
@@ -379,7 +344,14 @@ class NeuralNetwork(pl.LightningModule):
         gridding_gap = grid_gap/2
         data_l = s - gridding_gap
         data_u = s + gridding_gap
-        
+
+        lb_dx, ub_dx = self.dynamic_system.range_dxdt(data_l, data_u, u_qp)
+        lb_dx = lb_dx.detach()
+        ub_dx = ub_dx.detach()
+        # print(f"lb_dx is {lb_dx}")
+        # print(f"ub_dx is {ub_dx}")
+
+
         # define perturbation
         perturbation = PerturbationLpNorm(norm=np.inf, x_L=data_l, x_U=data_u)
         # define perturbed data
@@ -389,11 +361,11 @@ class NeuralNetwork(pl.LightningModule):
         required_A = defaultdict(set)
         required_A[model.output_name[0]].add(model.input_name[0])
 
-        lb, ub, A_dict = model.compute_bounds(x=(x,), method="backward", return_A=True, needed_A_dict=required_A)
+        lb_h, ub_h, A_dict = model.compute_bounds(x=(x,), method="backward", return_A=True, needed_A_dict=required_A)
         # print(f"lb is {lb}")
         # print(f"ub is {ub}")
-        A_lower, b_lower = A_dict[model.output_name[0]][model.input_name[0]]['lA'], A_dict[model.output_name[0]][model.input_name[0]]['lbias']
-        A_upper, b_upper = A_dict[model.output_name[0]][model.input_name[0]]['uA'], A_dict[model.output_name[0]][model.input_name[0]]['ubias']
+        # A_lower, b_lower = A_dict[model.output_name[0]][model.input_name[0]]['lA'], A_dict[model.output_name[0]][model.input_name[0]]['lbias']
+        # A_upper, b_upper = A_dict[model.output_name[0]][model.input_name[0]]['uA'], A_dict[model.output_name[0]][model.input_name[0]]['ubias']
         
         
         ########### A_J_lower upper
@@ -406,165 +378,31 @@ class NeuralNetwork(pl.LightningModule):
         # print(f"lb_j is {lb_j}")
         # print(f"ub_j is {ub_j}")
 
-        # get the indices that two vectors are both positive or negative
-        indices = torch.logical_not( torch.all(lb_j * ub_j > 0, dim=1) ) 
-        print(f"indices is {indices}")
-        # get the indices that is True
-        indices = torch.nonzero(indices, as_tuple=True)
-        print(f"indices is {indices}")
+        # compute the multiplication of lower bound and upper bound
+        lb_j_lb_dx = torch.mul(lb_j, lb_dx)
+        ub_j_ub_dx = torch.mul(ub_j, ub_dx)
+        lb_j_ub_dx = torch.mul(lb_j, ub_dx)
+        ub_j_lb_dx = torch.mul(ub_j, lb_dx)
 
-        # get the corresponding states
-        s_bad = s[indices]
-        if self.training_stage == 2:
-            for i in range(s_bad.shape[0]):
-                data = (s_bad[i].unsqueeze(dim=0), grid_gap[i].unsqueeze(dim=0))
-                node = self.data_module.new_tree.get_node(self.data_module.uniname_of_data(data))
-                self.data_module.expand_leave(node)
+        # sovlve convex relaxation problem
+        J, dx, X, h= self._solve_convex_relataxion(lb_j, ub_j, lb_dx, ub_dx, lb_h, ub_h, lb_j_lb_dx, ub_j_ub_dx, lb_j_ub_dx, ub_j_lb_dx)
 
+        q_min = 0.5 * h + torch.sum(X, dim=1, keepdim=True)
+        violation = coefficients_descent_loss * F.relu(-q_min)
+        epsilon_area_q_min_loss_term = violation[torch.logical_not(unsafe_mask)].mean()
         
-
-        _, J_s = self.V_with_jacobian(s)
-        # print(f"jacobian at s is {J_s}")
-        print(f"jacobian at s shape is {J_s.shape}")
-
-        ########## A_f_lower
-        ns = self.dynamic_system.ns
-        A_f_lower = torch.zeros(bs, ns, ns).to(s.device)
-        A_f_lower[:, 0, 1] = 1
-        A_f_lower[:, 1, 0] = self.dynamic_system.gravity * torch.cos(s[:, 0]) / self.dynamic_system.L
-        A_f_lower[:, 1, 1] = -self.dynamic_system.b /(self.dynamic_system.m* self.dynamic_system.L ** 2)
-        # print(f"A_f_lower is {A_f_lower}")
-        # print(f"A_f_lower shape is {A_f_lower.shape}")
-
-        b_f_lower = torch.zeros(bs, ns, 1).to(s.device)
-        b_f_lower[:, 0, 0] = 0
-        b_f_lower[:, 1, 0] = self.dynamic_system.gravity*( torch.sin(s[:, 0]) - torch.cos(s[:, 0])*s[:, 0] -gridding_gap[:, 0]) /self.dynamic_system.L
-        # print(f"b_f_lower is {b_f_lower}")
-
-        # s_eps = s - gridding_gap
-        # s_eps_p = s + gridding_gap
-        # f_s_0 = self.dynamic_system.f(s_eps)
-        # print(f"f_s_0 is {f_s_0}")
-        # f_s_lower = torch.bmm(A_f_lower, s_eps.unsqueeze(dim=-1)) + b_f_lower
-        # print(f"f_s_lower = {f_s_lower.squeeze(dim=-1)}")
-        # f_s_lower_p = torch.bmm(A_f_lower, s_eps_p.unsqueeze(dim=-1)) + b_f_lower
-        # print(f"f_s_lower_p = {f_s_lower_p.squeeze(dim=-1)}")
-
-        ###### A_f_upper
-        A_f_upper = torch.zeros(bs, ns, ns).to(s.device)
-        A_f_upper[:, 0, 1] = 1
-        A_f_upper[:, 1, 0] = self.dynamic_system.gravity * torch.cos(s[:, 0]) / self.dynamic_system.L
-        A_f_upper[:, 1, 1] = -self.dynamic_system.b /(self.dynamic_system.m* self.dynamic_system.L ** 2)
-        # print(f"A_f_upper is {A_f_upper}")
-        # print(f"A_f_upper shape is {A_f_upper.shape}")
-
-        b_f_upper = torch.zeros(bs, ns, 1).to(s.device)
-        b_f_upper[:, 0, 0] = 0
-        b_f_upper[:, 1, 0] = self.dynamic_system.gravity*( torch.sin(s[:, 0]) - torch.cos(s[:, 0])*s[:, 0] + gridding_gap[:, 0]) /self.dynamic_system.L
-        # print(f"b_f_upper is {b_f_upper}")
-
-        # f_s_upper = torch.bmm(A_f_upper, s_eps.unsqueeze(dim=-1)) + b_f_upper
-        # print(f"f_s_upper = {f_s_upper.squeeze(dim=-1)}")
-
-        ####### A_g_lower upper
-        # g_s_0 = self.dynamic_system.g(s)
-        # print(f"g_s_0 = {g_s_0}")
-        # print(f"g_s_0 shape = {g_s_0.shape}")
-        # print(f"u_qp shape is {u_qp.shape}")
-        # print(f"u_qp = {u_qp}")
-        A_g_lower = torch.zeros(bs, ns, ns).to(s.device)
-        A_g_upper = torch.zeros(bs, ns, ns).to(s.device)
-        b_g_lower = torch.bmm(torch.tensor([0, 1/(self.dynamic_system.m * self.dynamic_system.L**2)]).reshape(ns, 1).expand(bs, ns, 1).to(s.device), u_qp.detach().unsqueeze(dim=-1))
-        b_g_upper = torch.bmm(torch.tensor([0, 1/(self.dynamic_system.m * self.dynamic_system.L**2)]).reshape(ns, 1).expand(bs, ns, 1).to(s.device), u_qp.detach().unsqueeze(dim=-1))
+        loss.append(("descent_term_epsilon_area", epsilon_area_q_min_loss_term))
         
-        # print(f"b_g_lower is{b_g_lower}")
-        # print(f"b_g_lower shape is{b_g_lower.shape}")
-
-        ###### start optimization 
-        nv = 9
-        nieq = 18
-        diag_Q = 0.001 * torch.ones(nv).float().to(s.device)
-        Q = torch.diag(diag_Q)
-        # Q[2:4, 6:8] = torch.eye(ns) * 0.5
-        # Q[4:6, 6:8] = torch.eye(ns) * 0.5
-        # Q[6:8, 2:4] = torch.eye(ns) * 0.5
-        # Q[6:8, 4:6] = torch.eye(ns) * 0.5
-        # print(f"Q = {Q}")
-
-        Q = Variable(Q.expand(bs, nv, nv))
-        #print(f"Q shape is {Q.shape}")
-
-        p = torch.zeros(bs, nv).to(s.device)
+        indices = torch.where(unsafe_mask<=0)
         
-        p[:, 2:4] = J_s.detach().squeeze(dim=1)
-        p[:, 4:6] = J_s.detach().squeeze(dim=1)
-        p[:, 8] = 0.5
-        # print(f"p shape is {p.shape}")
-        # print(f"p = {p}")
+        for i in indices[0]:
+            data = (s[i].unsqueeze(dim=0), grid_gap[i].unsqueeze(dim=0))
+            node = self.data_module.new_tree.get_node(self.data_module.uniname_of_data(data))
+            if q_min[i] > 0:
+                node.data[2] = True
+            else:
+                node.data[2] = False
 
-        ns = self.dynamic_system.ns
-        G = Variable(torch.zeros(bs, nieq, nv).to(s.device))
-        # G[:, 0:2, 6:8] = -torch.eye(ns).to(s.device)
-        # G[:, 2:4, 6:8] = torch.eye(ns).to(s.device)
-        G[:, 4:6, 0:2] = A_f_lower 
-        G[:, 4:6, 2:4] = -torch.eye(ns).to(s.device)
-        G[:, 6:8, 0:2] = -A_f_upper
-        G[:, 6:8, 2:4] = torch.eye(ns).to(s.device)
-        G[:, 8:10, 0:2] = A_g_lower
-        G[:, 8:10, 4:6] = -torch.eye(ns).to(s.device)
-        G[:, 10:12, 0:2] = -A_g_upper
-        G[:, 10:12, 4:6] = torch.eye(ns).to(s.device)
-        G[:, 12:13, 0:2] = A_lower
-        G[:, 12:13, 8:9] = -1
-        G[:, 13:14, 0:2] = -A_upper
-        G[:, 13:14, 8:9] = 1
-        G[:, 14:16, 0:2] = -torch.eye(ns).to(s.device)
-        G[:, 16:18, 0:2] = torch.eye(ns).to(s.device)
-        # print(f"G is {G}")
-        # print(f"G shape is {G.shape}")
-
-        h = Variable(torch.zeros(bs, nieq).to(s.device))
-        # h[:, 0:2] = -lb_j.squeeze(dim=-1)
-        # h[:, 2:4] = ub_j.squeeze(dim=-1)
-        h[:, 4:6] = -b_f_lower.squeeze(dim=-1)
-        h[:, 6:8] = b_f_upper.squeeze(dim=-1)
-        h[:, 8:10] = -b_g_lower.squeeze(dim=-1)
-        h[:, 10:12] = b_g_upper.squeeze(dim=-1)
-        h[:, 12] = -b_lower.squeeze(dim=-1)
-        h[:, 13] = b_upper.squeeze(dim=-1)
-        h[:, 14:16] = -s + gridding_gap
-        h[:, 16:18] = s + gridding_gap
-        # print(f"h is {h}")
-        # print(f"h shape is {h.shape}")
-        e = Variable(torch.Tensor().to(s.device))
-
-        x_min = QPFunction()(Q, p, G, h, e, e)
-        if  torch.all(torch.isnan(x_min)==False):
-            s_min = x_min[:,0:2]
-            f_min = x_min[:, 2:4]
-            gu_min = x_min[:, 4:6]
-            J_min = x_min[:, 6:8]
-            h_min = x_min[:, 8]
-            # print(f"s = {s}")
-            # print(f"s_min = {s_min} \n f_min = {f_min} \n gu_min = {gu_min} \n J_min = {J_min}  \n h_min = {h_min}")
-            
-            q_min = torch.bmm(J_s, f_min.unsqueeze(dim=-1) + gu_min.unsqueeze(dim=-1)).squeeze(dim=-1) + 0.5*h_min.unsqueeze(dim=1)
-            # print(f"q is {Vdot + self.clf_lambda * H}")
-            # print(f"min of q is {q_min}")
-
-            # q_min = q_min.detach()
-            violation = coefficients_descent_loss * F.relu(-q_min)
-            # violation = F.relu(h_min)
-            epsilon_area_q_min_loss_term = violation[torch.logical_not(unsafe_mask)].mean()
-            
-            loss.append(("descent_term_epsilon_area", epsilon_area_q_min_loss_term))
-        else:
-            print(f"the OptNet has no solution!!!!!!!!!!!")
-            exit()
-
-        # print(f"qp_relaxation_loss: {qp_relaxation_loss}")
-        # print(f"descent_term_lin: {clbf_descent_term_lin}")
-        # print(f"descent_term_epsilon_area: {epsilon_area_q_min_loss_term}")
 
         return loss
 
@@ -581,9 +419,12 @@ class NeuralNetwork(pl.LightningModule):
         
         '''
         loss = []
-        gridding_gap = self.data_module.train_grid_gap
+        gridding_gap = grid_gap
+        data_l = s - gridding_gap
+        data_u = s + gridding_gap
+        
         # define perturbation
-        perturbation = PerturbationLpNorm(norm=np.inf, eps=gridding_gap)
+        perturbation = PerturbationLpNorm(norm=np.inf, x_L=data_l, x_U=data_u)
         # define perturbed data
         x = BoundedTensor(s, perturbation)
 
@@ -598,91 +439,6 @@ class NeuralNetwork(pl.LightningModule):
         # print(f"unsafe_region_epsilon_term = {unsafe_hs_epsilon_term}")
         
         return loss 
-
-    def value_function_loss(self,
-        s : torch.Tensor,
-        safe_mask: torch.Tensor,
-        unsafe_mask: torch.Tensor,
-    ):
-        loss = []
-        gs = self.g(s)
-
-        gs_hat, _ = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True)
-        # print(gs_hat)
-        loss_term = F.relu( torch.norm( gs - gs_hat, p=2) - 0.3 )
-        loss.append(("value_function_loss_term", loss_term))
-        
-        return loss
-
-    def V_lie_derivatives(
-        self, x: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Compute the Lie derivatives of the CLF V along the control-affine dynamics
-
-        args:
-            x: bs x self.dynamics_model.n_dims tensor of state
-            
-        returns:
-            Lf_V: bs x len(scenarios) x 1 tensor of Lie derivatives of V
-                  along f
-            Lg_V: bs x len(scenarios) x self.dynamics_model.n_controls tensor
-                  of Lie derivatives of V along g
-        """
-
-        # Get the Jacobian of V for each entry in the batch
-        _, gradh = self.V_with_jacobian(x)
-        # print(f"gradh shape is {gradh.shape}")
-        # We need to compute Lie derivatives for each scenario
-        batch_size = x.shape[0]
-        Lf_V = torch.zeros(batch_size, 2, 1)
-        Lg_V = torch.zeros(batch_size, 2, 1)
-
-        f = self.dynamic_system.f(x)
-        g = self.dynamic_system.g(x)
-        # print(f"f shape is {f.shape}")
-        # print(f"g shape is {g.shape}")
-
-        Lf_V = torch.bmm(gradh, f.unsqueeze(dim=-1)).squeeze(1)
-        Lg_V = torch.bmm(gradh, g).squeeze(1)
-        # print(f"Lf_V shape is {Lf_V.shape}")
-        # print(f"Lg_V shape is {Lg_V.shape}")
-        
-        return Lf_V, Lg_V
-
-    def G_lie_derivatives(
-        self, x: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Compute the Lie derivatives of the CLF V along the control-affine dynamics
-
-        args:
-            x: bs x self.dynamics_model.n_dims tensor of state
-            
-        returns:
-            Lf_V: bs x len(scenarios) x 1 tensor of Lie derivatives of V
-                  along f
-            Lg_V: bs x len(scenarios) x self.dynamics_model.n_controls tensor
-                  of Lie derivatives of V along g
-        """
-
-        # Get the Jacobian of V for each entry in the batch
-        _, gradh = self.G_with_jacobian(x)
-        # print(f"gradh shape is {gradh.shape}")
-        # We need to compute Lie derivatives for each scenario
-        batch_size = x.shape[0]
-        Lf_V = torch.zeros(batch_size, 2, 1)
-        Lg_V = torch.zeros(batch_size, 2, 1)
-
-        f = self.dynamic_system.f(x)
-        g = self.dynamic_system.g(x)
-        # print(f"f shape is {f.shape}")
-        # print(f"g shape is {g.shape}")
-
-        Lf_V = torch.bmm(gradh, f.unsqueeze(dim=-1)).squeeze(1)
-        Lg_V = torch.bmm(gradh, g).squeeze(1)
-        # print(f"Lf_V shape is {Lf_V.shape}")
-        # print(f"Lg_V shape is {Lg_V.shape}")
-        
-        return Lf_V, Lg_V
 
     def generate_cvx_solver(self):
         # Save the other parameters
@@ -718,8 +474,8 @@ class NeuralNetwork(pl.LightningModule):
             Lf_V_params[0]
             + Lg_V_params[0] @ u
             + self.clf_lambda * V_param
-            - clf_relaxations[0]
-            <= 0
+            + clf_relaxations[0]
+            >= 0
         )
 
 
@@ -745,6 +501,52 @@ class NeuralNetwork(pl.LightningModule):
             problem, variables=variables, parameters=parameters
         )
 
+    def generate_convex_relaxation_solver(self):
+        # define optimization variables
+        
+        J = cp.Variable(self.dynamic_system.ns)
+        dx = cp.Variable(self.dynamic_system.ns)
+        h = cp.Variable(1)
+        X = cp.Variable(self.dynamic_system.ns)
+        
+        # define parameters
+        
+        lb_j = cp.Parameter(self.dynamic_system.ns)
+        ub_j = cp.Parameter(self.dynamic_system.ns)
+        lb_dx = cp.Parameter(self.dynamic_system.ns)
+        ub_dx = cp.Parameter(self.dynamic_system.ns)
+        lb_h = cp.Parameter(1)
+        ub_h = cp.Parameter(1)
+        lb_j_lb_dx = cp.Parameter(self.dynamic_system.ns)
+        ub_j_up_dx = cp.Parameter(self.dynamic_system.ns)
+        lb_j_up_dx = cp.Parameter(self.dynamic_system.ns)
+        ub_j_lb_dx = cp.Parameter(self.dynamic_system.ns)
+
+        # define objective
+        objective_expression = cp.sum(X) + 0.5 * h
+        objective = cp.Minimize(objective_expression)
+
+       
+
+        # define constraints
+        constraints = []
+        constraints.append(lb_j <= J)
+        constraints.append(J <= ub_j)
+        constraints.append(lb_dx <= dx) 
+        constraints.append(dx <= ub_dx)
+        constraints.append(lb_h <= h)
+        constraints.append(h <= ub_h)
+        constraints.append(X - cp.multiply(lb_j, dx) - cp.multiply(lb_dx, J) >= - lb_j_lb_dx )
+        constraints.append(X - cp.multiply(lb_j, dx) - cp.multiply(ub_dx, J) >= - ub_j_up_dx )
+        constraints.append(X - cp.multiply(lb_j, dx) - cp.multiply(ub_dx, J) >= - lb_j_up_dx )
+        constraints.append(X - cp.multiply(lb_dx, J) - cp.multiply(ub_j, dx) >= - ub_j_lb_dx )
+        
+
+        problem = cp.Problem(objective, constraints)
+        assert problem.is_dpp()
+        variables = [J, dx, h, X]
+        parameters = [lb_j, ub_j, lb_dx, ub_dx, lb_h, ub_h, lb_j_lb_dx,ub_j_up_dx, lb_j_up_dx, ub_j_lb_dx]
+        self.convex_relaxation_solver = CvxpyLayer(problem,  variables=variables, parameters=parameters)
 
     def _solve_CLF_QP_cvxpylayers(
         self,
@@ -798,6 +600,47 @@ class NeuralNetwork(pl.LightningModule):
 
         return u_result.type_as(x), r_result.type_as(x)
 
+    def _solve_convex_relataxion(
+        self,
+        lb_j: torch.Tensor,
+        ub_j: torch.Tensor,
+        lb_dx: torch.Tensor,
+        ub_dx: torch.Tensor,
+        lb_h: torch.Tensor,
+        ub_h: torch.Tensor,
+        lb_j_lb_dx : torch.Tensor,
+        ub_j_up_dx : torch.Tensor,
+        lb_j_up_dx : torch.Tensor,
+        ub_j_lb_dx : torch.Tensor,
+    )   -> Tuple[torch.Tensor, torch.Tensor]:
+
+        params = []
+        params.append(lb_j)
+        params.append(ub_j)
+        params.append(lb_dx)
+        params.append(ub_dx)
+        params.append(lb_h)
+        params.append(ub_h)
+        params.append(lb_j_lb_dx)
+        params.append(ub_j_up_dx)
+        params.append(lb_j_up_dx)
+        params.append(ub_j_lb_dx)
+
+        # We've already created a parameterized QP solver, so we can use that
+        result = self.convex_relaxation_solver(
+            *params,
+            solver_args={"max_iters": 50000000},
+        )
+
+        # Extract the results
+        J_result = result[0]
+        dx_result = result[1]
+        h_result = result[2]
+        X_result = result[3]
+        
+
+        return J_result, dx_result, X_result, h_result
+
 
     def solve_CLF_QP(
         self,
@@ -843,6 +686,7 @@ class NeuralNetwork(pl.LightningModule):
             # return self._solve_CLF_QP_cvxpylayers(
             #     x, u_ref, H, Lf_V, Lg_V, relaxation_penalty, epsilon=epsilon
             # )
+            
             return self._solve_CLF_QP_OptNet(
                 x, u_ref, H, Lf_V, Lg_V, relaxation_penalty, epsilon=epsilon
             )
@@ -987,7 +831,8 @@ class NeuralNetwork(pl.LightningModule):
 
         u_min, u_max = self.dynamic_system.control_limits
 
-        diag_Q = 2 * torch.Tensor([1, 1000]).float().to(x.device)
+        diag_Q =  torch.ones(nv).float().to(x.device)
+        diag_Q[-1] = 1000  # 2 * torch.Tensor([1, 1000]).float().to(x.device)
         Q = torch.diag(diag_Q).reshape(nv, nv)
         Q = Variable(Q.expand(bs, nv, nv))
         # print(f"Q shape is {Q.shape} \n")
@@ -1001,11 +846,11 @@ class NeuralNetwork(pl.LightningModule):
         # print(f"Lg_h shape is {Lg_V.shape}")
         
         G = Variable(torch.zeros(bs, nieq, nv).to(x.device))
-        G[:, 0, 0] = -Lg_V.squeeze(-1)
-        G[:, 0, 1] = -1
-        G[:, 1, 0] = -1
-        G[:, 2, 0] = 1
-        G[:, 3, 1] = -1
+        G[:, 0, 0:nu] = -Lg_V
+        G[:, 0, nu:nv] = -1
+        G[:, 1, 0:nu] = -1
+        G[:, 2, 0:nu] = 1
+        G[:, 3, nu:nv] = -1
         # print(f"G shape is {G.shape}")
         # print(f"Lg_V is {Lg_V}")
         # print(f"G is {G}")
@@ -1020,13 +865,94 @@ class NeuralNetwork(pl.LightningModule):
 
         e = Variable(torch.Tensor())
 
-        u_delta = QPFunction()(Q, p, G, h, e, e)
+        u_delta = QPFunction(verbose=0)(Q, p, G, h, e, e)
         # print(f"u_delta shape is {u_delta.shape}")
         # print(f"u_delta is {u_delta}")
         
         return u_delta[:, 0:1], u_delta[:, 1:2]
 
-   
+    def _solve_convex_relataxion_OptNet(
+        self,
+        x : torch.Tensor,
+        lb_j: torch.Tensor,
+        ub_j: torch.Tensor,
+        lb_dx: torch.Tensor,
+        ub_dx: torch.Tensor,
+        lb_h: torch.Tensor,
+        ub_h: torch.Tensor,
+        lb_j_lb_dx : torch.Tensor,
+        ub_j_ub_dx : torch.Tensor,
+        lb_j_ub_dx : torch.Tensor,
+        ub_j_lb_dx : torch.Tensor,
+    )   -> Tuple[torch.Tensor, torch.Tensor]:
+
+        bs = x.shape[0]
+        ns = self.dynamic_system.ns
+        nv = 3*ns + 1
+        nieq = 8*ns + 2
+
+
+        diag_Q = 0.00001 * torch.ones(nv).float().to(x.device)
+        Q = torch.diag(diag_Q).reshape(nv, nv)
+        Q = Variable(Q.expand(bs, nv, nv))
+
+        p = Variable(torch.zeros(bs, nv).float().to(x.device))
+        p[:, 2*ns:3*ns] = 1.0
+        p[:, 3*ns:3*ns+1] = 0.5
+
+        G = Variable(torch.zeros(bs, nieq, nv).to(x.device))
+        # G[:, 0:ns, 0:ns] = torch.diag(lb_dx.squeeze(-1))
+        # G[:, 0:ns, ns:2*ns] = torch.diag(lb_j.squeeze(-1))
+        G[:, 0:ns, 2*ns:3*ns] = -torch.eye(ns).to(x.device)
+
+        # G[:, ns:2*ns, 0:ns] = torch.diag(ub_dx.squeeze(-1))
+        # G[:, ns:2*ns, ns:2*ns] = torch.diag(lb_j.squeeze(-1))
+        # G[:, ns:2*ns, 2*ns:3*ns] = -torch.eye(ns).to(x.device)
+
+        # G[:, 2*ns:3*ns, 0:ns] = torch.diag(ub_dx.squeeze(-1))
+        # G[:, 2*ns:3*ns, ns:2*ns] = torch.diag(lb_j.squeeze(-1))
+        # G[:, 2*ns:3*ns, 2*ns:3*ns] = -torch.eye(ns).to(x.device)
+
+        # G[:, 3*ns:4*ns, 0:ns] = torch.diag(lb_dx.squeeze(-1))
+        # G[:, 3*ns:4*ns, ns:2*ns] = torch.diag(ub_j.squeeze(-1))
+        # G[:, 3*ns:4*ns, 2*ns:3*ns] = -torch.eye(ns).to(x.device)
+
+        G[:, 4*ns:5*ns, 0:ns] = -torch.eye(ns).to(x.device)
+
+        G[:, 5*ns:6*ns, 0:ns] = torch.eye(ns).to(x.device)
+
+        G[:, 6*ns:7*ns, ns:2*ns] = -torch.eye(ns).to(x.device)
+
+        G[:, 7*ns:8*ns, ns:2*ns] = torch.eye(ns).to(x.device)
+
+        G[:, 8*ns:8*ns+1, 3*ns:3*ns+1] = -torch.eye(1).to(x.device)
+        
+        G[:, 8*ns+1:8*ns+2, 3*ns:3*ns+1] = torch.eye(1).to(x.device)
+
+        h = Variable(torch.zeros(bs, nieq).to(x.device))
+
+        # h[:, 0:ns] = lb_j_lb_dx.squeeze(-1)
+        # h[:, ns:2*ns] = ub_j_ub_dx.squeeze(-1)
+        # h[:, 2*ns:3*ns] = lb_j_ub_dx.squeeze(-1)
+        # h[:, 3*ns:4*ns] = ub_j_lb_dx.squeeze(-1)
+        h[:, 4*ns:5*ns] = -lb_j.squeeze(-1)
+        h[:, 5*ns:6*ns] = ub_j.squeeze(-1)
+        h[:, 6*ns:7*ns] = -lb_dx.squeeze(-1)
+        h[:, 7*ns:8*ns] = ub_dx.squeeze(-1)
+        h[:, 8*ns:8*ns+1] = -lb_h
+        h[:, 8*ns+1:8*ns+2] = ub_h
+
+        e = Variable(torch.Tensor())
+
+        s_solution = QPFunction( verbose=1, maxIter=1000, notImprovedLim=200)(Q, p, G, h, e, e)
+        
+        J = s_solution[:, 0:ns]
+        dx = s_solution[:, ns:2*ns]
+        X = s_solution[:, 2*ns:3*ns]
+        h = s_solution[:, 3*ns:3*ns+1]
+
+        return J, dx, X, h
+
     def test(self, x, relaxation_penalty=1000, epsilon=0.1):
         H = self.h(x)
         Lf_V, Lg_V = self.V_lie_derivatives(x)
@@ -1197,7 +1123,7 @@ class NeuralNetwork(pl.LightningModule):
     def nominal_controller(self, s):
         batch_size = s.shape[0]
 
-        K = torch.ones(batch_size, self.dynamic_system.nu, self.dynamic_system.ns) * torch.unsqueeze(self.K, dim=0)
+        K = torch.ones(batch_size, self.dynamic_system.nu, self.dynamic_system.ns) * torch.unsqueeze(self.dynamic_system.K, dim=0)
         K = K.to(s.device)
 
         u = -torch.bmm(K, s.unsqueeze(dim=-1))
@@ -1229,7 +1155,11 @@ class NeuralNetwork(pl.LightningModule):
         model.train()
 
         copy_h =  copy.deepcopy(self.h)
-        model_jacobian = BoundedModule(copy_h, s)
+        model_jacobian = BoundedModule(copy_h, s,
+                                        bound_opts={
+                                                        'sparse_features_alpha': False,
+                                                        'sparse_spec_alpha': False,
+                                                    })
         model_jacobian.augment_gradient_graph(s)
         model_jacobian.train()
 
@@ -1245,7 +1175,7 @@ class NeuralNetwork(pl.LightningModule):
 
         if self.training_stage == 1:
             component_losses.update(
-                self.boundary_loss(s, safe_mask, unsafe_mask)
+                self.boundary_loss(s, safe_mask, unsafe_mask, coefficient_for_safe_state_loss=20, coefficient_for_unsafe_state_loss=1e2)
             )
             
             component_losses.update(
@@ -1255,10 +1185,10 @@ class NeuralNetwork(pl.LightningModule):
             )
 
         if self.training_stage == 2:
-            coefficient_for_safe_state_loss = max(40 * (1 - (self.current_epoch-self.epoch_record)/200), 1)
-            component_losses.update(
-                self.boundary_loss(s, safe_mask, unsafe_mask, coefficient_for_safe_state_loss=coefficient_for_safe_state_loss, coefficient_for_unsafe_state_loss=1e2)
-            )
+            # coefficient_for_safe_state_loss = max(40 * (1 - (self.current_epoch-self.epoch_record)/170), 1)
+            # component_losses.update(
+            #     self.boundary_loss(s, safe_mask, unsafe_mask, coefficient_for_safe_state_loss=coefficient_for_safe_state_loss, coefficient_for_unsafe_state_loss=1e2)
+            # )
 
             component_losses.update(
                 self.descent_loss(
@@ -1350,15 +1280,15 @@ class NeuralNetwork(pl.LightningModule):
             # Log the other losses
             self.log(loss_key + "/train", avg_losses[loss_key], sync_dist=True)
 
-        if self.training_stage == 0 and (avg_losses["loss"] < 1.5): # warm up, shape h and g
+        if self.training_stage == 0 and (avg_losses["loss"] < 2.5): # warm up, shape h and g
             self.training_stage = 1  # start to consider condition 3
             self.epoch_record = self.current_epoch
-        elif self.training_stage == 1 and (avg_losses["loss"] < 1 or (self.current_epoch - self.epoch_record) > 30): 
+        elif self.training_stage == 1 and (avg_losses["loss"] < 1.5 or (self.current_epoch - self.epoch_record) > 10): 
             self.training_stage = 2 # start to consider epsilon loss
             self.epoch_record = self.current_epoch
         print(f"current training stage is {self.training_stage}")
 
-        self.prepare_data()
+
 
     def validation_step(self, batch, batch_idx):
         """Conduct the validation step for the given batch"""
@@ -1453,13 +1383,7 @@ class NeuralNetwork(pl.LightningModule):
         batch_dict["shape_h"]["state"] = x
         batch_dict["shape_h"]["val"] = h_x
 
-        # record shape_g
-        g_x = self.g(x)
-        batch_dict["shape_g"]["state"] = x
-        batch_dict["shape_g"]["val"] = g_x
-
         # record safe_violation
-        
 
         h_x_neg_mask = h_x < 0 
         unit_index= torch.hstack((safe_mask.unsqueeze(dim=1), h_x_neg_mask))
@@ -1523,7 +1447,7 @@ class NeuralNetwork(pl.LightningModule):
 
 
     def configure_optimizers(self):
-        clbf_params = list(self.h.parameters()) + list(self.g.parameters())
+        clbf_params = list(self.h.parameters()) # list(self.g.parameters())
         clbf_opt = torch.optim.SGD(
             clbf_params,
             lr=self.primal_learning_rate,

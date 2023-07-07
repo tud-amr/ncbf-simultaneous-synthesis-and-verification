@@ -97,6 +97,42 @@ class InvertedPendulum(ControlAffineSystem):
 
         return g
 
+    def range_dxdt(self, x_l: torch.Tensor, x_u:torch.Tensor,  u: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Return the range of dsdt(x,u) for all s in the batch.
+
+        args:
+            x_l, x_u: a tensor of (batch_size, self.n_dims) points in the state space
+            u: a tensor of (batch_size, self.n_controls) points in the control space
+        returns:
+            a tuple (lower, upper) of tensors of (batch_size, self.n_dims) points
+            giving the lower and upper bounds on dxdt(x,u) for all x in the batch.
+        """
+
+        # print(f"x_l is {x_l}")
+        # print(f"x_u is {x_u}")
+
+        number_of_samples = 1000
+        dxdt_list = []
+        for i in range(number_of_samples):
+            sample = (x_u - x_l) * torch.rand_like(x_l) + x_l
+            # print(f"sample  is {sample}")
+            dxdt = self.dsdt(sample, u)
+            dxdt_list.append(dxdt)
+
+        dxdt = torch.stack(dxdt_list, dim=0)
+        # print(f"dxdt is {dxdt}")
+        # print(f"dxdt shape is {dxdt.shape}")
+
+        dxdt_min, _ = torch.min(dxdt, dim=0)
+        dxdt_max, _ = torch.max(dxdt, dim=0)
+        # print(f"dxdt_min is {dxdt_min}")
+        # print(f"dxdt_max is {dxdt_max}")
+        return dxdt_min, dxdt_max
+
+
+
+
 if __name__ == "__main__":
 
     inverted_pendulum = InvertedPendulum()

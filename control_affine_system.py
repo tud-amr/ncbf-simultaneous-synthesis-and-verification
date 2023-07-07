@@ -57,6 +57,21 @@ class ControlAffineSystem(ABC):
             g: bs x self.n_dims x self.n_controls tensor
         """
         pass
+    
+    @abstractmethod
+    def range_dxdt(self, x_range: torch.Tensor, u: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Return the range of dsdt(x,u) for all s in the batch.
+
+        args:
+            x: a tensor of (batch_size, self.n_dims) points in the state space
+            u: a tensor of (batch_size, self.n_controls) points in the control space
+        returns:
+            a tuple (lower, upper) of tensors of (batch_size, self.n_dims) points
+            giving the lower and upper bounds on dxdt(x,u) for all x in the batch.
+        """
+        pass
+
 
     def set_domain_limits(self, lower_bd: torch.Tensor,upper_bd: torch.Tensor):
         self.domain_lower_bd = lower_bd
