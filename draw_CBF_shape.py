@@ -24,7 +24,7 @@ data_module = DataModule(system=inverted_pendulum_1, val_split=0, train_batch_si
 data_module.prepare_data()
 
 s_training = data_module.s_training
-
+s_training = torch.load("s_training.pt")
 
 ######################## extract test results ###########################
 
@@ -164,13 +164,13 @@ legend_elements = [
 
 plt.legend(handles=legend_elements, bbox_to_anchor=(1, 1.1),loc='upper right')
 
-# fig1,ax1=plt.subplots(1,1)
-# cp = ax1.contourf(X.reshape((math.gcd(X.shape[0], 1000), -1)), U.reshape((math.gcd(X.shape[0], 1000), -1)), H.reshape((math.gcd(X.shape[0], 1000), -1)))
-# fig1.colorbar(cp) # Add a colorbar to a plot
-# ax1.set_title('Filled Contours Plot')
-# plt.xlabel(r"$\theta$")
-# plt.ylabel(r"$\dot{\theta}$")
-# ax1.set_title("contour of CBF")
+fig1,ax1=plt.subplots(1,1)
+cp = ax1.contourf(X.reshape((math.gcd(X.shape[0], 1000), -1)), U.reshape((math.gcd(X.shape[0], 1000), -1)), H.reshape((math.gcd(X.shape[0], 1000), -1)))
+fig1.colorbar(cp) # Add a colorbar to a plot
+ax1.set_title('Filled Contours Plot')
+plt.xlabel(r"$\theta$")
+plt.ylabel(r"$\dot{\theta}$")
+ax1.set_title("contour of CBF")
 
 
 ####################### plot safe violation point #####################

@@ -138,7 +138,7 @@ class DataModule(pl.LightningDataModule):
         leave_node_s = leave_node.data[0]
         leave_node_grid_gap = leave_node.data[1]
 
-        if torch.min(leave_node_grid_gap) > 0.1:
+        if torch.min(leave_node_grid_gap) > 0.05:
             s_dim = leave_node_s.shape[1]
             dir = torch.tensor([0.5, -0.5])
             combine = list(product(dir, repeat=s_dim))
