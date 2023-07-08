@@ -274,17 +274,17 @@ class NeuralNetwork(pl.LightningModule):
         eps = 0.1
         H = self.h(s)
 
-        positive_mask = (H >= 0)
-
+        
         condition_active = torch.sigmoid(10 * (1.0 + eps - H))
 
-        u_qp, qp_relaxation = self.solve_CLF_QP(s, requires_grad=requires_grad, epsilon=0)
+        # u_qp, qp_relaxation = self.solve_CLF_QP(s, requires_grad=requires_grad, epsilon=0)
+        u_qp = self.solve_CLF_QP(s, requires_grad=requires_grad, epsilon=0)
         
-        qp_relaxation = torch.mean(qp_relaxation, dim=-1)
+        # qp_relaxation = torch.mean(qp_relaxation, dim=-1)
 
-        ####### Minimize the qp relaxation to encourage satisfying the decrease condition #################
-        qp_relaxation_loss = qp_relaxation[torch.logical_not(unsafe_mask)].mean()
-        loss.append(("QP_relaxation", qp_relaxation_loss))
+        # ####### Minimize the qp relaxation to encourage satisfying the decrease condition #################
+        # qp_relaxation_loss = qp_relaxation[torch.logical_not(unsafe_mask)].mean()
+        # loss.append(("QP_relaxation", qp_relaxation_loss))
 
         ############### Now compute the decrease using linearization #######################
         eps = 0
@@ -334,6 +334,7 @@ class NeuralNetwork(pl.LightningModule):
         # if accuracy:
         #     loss.append(("CLBF_descent_accuracy_simulated", clbf_descent_acc_sim))
 
+        
 
         return loss
 
@@ -403,13 +404,14 @@ class NeuralNetwork(pl.LightningModule):
 
         condition_active = torch.sigmoid(10 * (1.0 + eps - H))
 
-        u_qp, qp_relaxation = self.solve_CLF_QP(s, requires_grad=requires_grad, epsilon=0)
+        # u_qp, qp_relaxation = self.solve_CLF_QP(s, requires_grad=requires_grad, epsilon=0)
+        u_qp = self.solve_CLF_QP(s, requires_grad=requires_grad, epsilon=0)
         
-        qp_relaxation = torch.mean(qp_relaxation, dim=-1)
+        # qp_relaxation = torch.mean(qp_relaxation, dim=-1)
 
-        ####### Minimize the qp relaxation to encourage satisfying the decrease condition #################
-        qp_relaxation_loss = qp_relaxation[positive_mask.squeeze(dim=-1)].mean()
-        loss.append(("QP_relaxation", qp_relaxation_loss))
+        # ####### Minimize the qp relaxation to encourage satisfying the decrease condition #################
+        # qp_relaxation_loss = qp_relaxation[positive_mask.squeeze(dim=-1)].mean()
+        # loss.append(("QP_relaxation", qp_relaxation_loss))
 
         ############### Now compute the decrease using linearization #######################
         eps = 0
@@ -426,7 +428,7 @@ class NeuralNetwork(pl.LightningModule):
         Vdot = Vdot.reshape(H.shape)
         violation = coefficients_descent_loss * F.relu(eps - (Vdot + self.clf_lambda * H))
         violation = violation * condition_active
-        clbf_descent_term_lin = clbf_descent_term_lin + violation[positive_mask].mean()
+        clbf_descent_term_lin = clbf_descent_term_lin + violation[torch.logical_not(unsafe_mask)].mean()
         clbf_descent_acc_lin = clbf_descent_acc_lin + (violation >= eps).sum() / (
             violation.nelement()
         )
@@ -437,25 +439,25 @@ class NeuralNetwork(pl.LightningModule):
 
 
         ##################### Now compute the decrease using simulation ##########################
-        eps = 0
-        clbf_descent_term_sim = torch.tensor(0.0).type_as(s)
-        clbf_descent_acc_sim = torch.tensor(0.0).type_as(s)
+        # eps = 0
+        # clbf_descent_term_sim = torch.tensor(0.0).type_as(s)
+        # clbf_descent_acc_sim = torch.tensor(0.0).type_as(s)
        
-        # xdot = self.dynamics_model.closed_loop_dynamics(x, u_qp, params=s)
+        # # xdot = self.dynamics_model.closed_loop_dynamics(x, u_qp, params=s)
 
-        x_next = self.dynamic_system.step(s, u_qp)
-        H_next = self.h(x_next)
-        violation = F.relu(
-            eps - ((H_next - H) / self.dynamic_system.dt + self.clf_lambda * H)
-        )
-        violation = coefficients_descent_loss * violation * condition_active
+        # x_next = self.dynamic_system.step(s, u_qp)
+        # H_next = self.h(x_next)
+        # violation = F.relu(
+        #     eps - ((H_next - H) / self.dynamic_system.dt + self.clf_lambda * H)
+        # )
+        # violation = coefficients_descent_loss * violation * condition_active
 
-        clbf_descent_term_sim = clbf_descent_term_sim + violation[positive_mask].mean()
-        clbf_descent_acc_sim = clbf_descent_acc_sim + (violation >= eps).sum() / (
-            violation.nelement() 
-        )
+        # clbf_descent_term_sim = clbf_descent_term_sim + violation[positive_mask].mean()
+        # clbf_descent_acc_sim = clbf_descent_acc_sim + (violation >= eps).sum() / (
+        #     violation.nelement() 
+        # )
 
-        loss.append(("descent_term_simulated", clbf_descent_term_sim))
+        # loss.append(("descent_term_simulated", clbf_descent_term_sim))
         # if accuracy:
         #     loss.append(("CLBF_descent_accuracy_simulated", clbf_descent_acc_sim))
 
@@ -516,7 +518,7 @@ class NeuralNetwork(pl.LightningModule):
         
         # loss.append(("descent_term_epsilon_area", epsilon_area_q_min_loss_term))
         
-        indices = torch.where(positive_mask>0)
+        indices = torch.where(torch.logical_not(unsafe_mask)>0)
         
         for i in indices[0]:
             data = (s[i].unsqueeze(dim=0), grid_gap[i].unsqueeze(dim=0))
@@ -789,8 +791,8 @@ class NeuralNetwork(pl.LightningModule):
             # return self._solve_CLF_QP_cvxpylayers(
             #     x, u_ref, H, Lf_V, Lg_V, relaxation_penalty, epsilon=epsilon
             # )
-            
-            return self._solve_CLF_QP_OptNet(
+
+            return self._solve_CLF_QP_OptNet2(
                 x, u_ref, H, Lf_V, Lg_V, relaxation_penalty, epsilon=epsilon
             )
         else:
@@ -973,6 +975,60 @@ class NeuralNetwork(pl.LightningModule):
         # print(f"u_delta is {u_delta}")
         
         return u_delta[:, 0:1], u_delta[:, 1:2]
+
+
+    def _solve_CLF_QP_OptNet2(self,
+        x: torch.Tensor,
+        u_ref: torch.Tensor,
+        V: torch.Tensor,
+        Lf_V: torch.Tensor,
+        Lg_V: torch.Tensor,
+        relaxation_penalty: float,
+        epsilon : float = 0.1,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+
+        bs = x.shape[0]
+        nu = self.dynamic_system.nu
+        nv = nu 
+        nieq = 2 * nu
+
+        u_min, u_max = self.dynamic_system.control_limits
+
+        diag_Q =  torch.ones(nv).float().to(x.device)
+        Q = 0.0001 * torch.diag(diag_Q).reshape(nv, nv)
+        Q = Variable(Q.expand(bs, nv, nv))
+        # print(f"Q shape is {Q.shape} \n")
+
+        p = Variable(torch.zeros(bs, nv).float().to(x.device))
+        # print(f"u_ref shape is {u_ref.shape}")
+        p[:, 0:nv] = -Lg_V
+        # print(f"p shape is {p.shape} \n")
+
+        # print(f"Lf_h shape is {Lf_V.shape}")
+        # print(f"Lg_h shape is {Lg_V.shape}")
+        
+        G = Variable(torch.zeros(bs, nieq, nv).to(x.device))
+        G[:, 0, 0:nu] = -1
+        G[:, 1, 0:nu] = 1
+       
+        # print(f"G shape is {G.shape}")
+        # print(f"Lg_V is {Lg_V}")
+        # print(f"G is {G}")
+
+        h = Variable(torch.zeros(bs, nieq).to(x.device))
+        h[:, 0] = -u_min
+        h[:, 1] = u_max
+        # print(f"h shape is {h.shape}")
+        # print(f"h is {h}")
+
+        e = Variable(torch.Tensor())
+
+        u_delta = QPFunction(verbose=0)(Q, p, G, h, e, e)
+        # print(f"u_delta shape is {u_delta.shape}")
+        # print(f"u_delta is {u_delta}")
+        
+        return u_delta[:, 0:1]
+
 
     def _solve_convex_relataxion_OptNet(
         self,
