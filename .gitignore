@@ -6,3 +6,5 @@ CBF_logs
 CBF_logs_backup
 backup
 RA_result
+*.pt
+.vscode 
