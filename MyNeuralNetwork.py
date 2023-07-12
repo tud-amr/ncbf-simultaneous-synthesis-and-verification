@@ -44,7 +44,7 @@ class NeuralNetwork(pl.LightningModule):
         # value_function: ValueFunctionNeuralNetwork,
         require_grad_descent_loss :bool = True,
         learn_shape_epochs: int = 10,
-        primal_learning_rate: float = 1e-3,
+        primal_learning_rate: float = 1e-4,
         gamma: float = 0.9,
         clf_lambda: float = 1.0,
         clf_relaxation_penalty: float = 50.0,
@@ -60,13 +60,13 @@ class NeuralNetwork(pl.LightningModule):
         self.require_grad_descent_loss = require_grad_descent_loss
         self.flatten = nn.Flatten()
         self.h = nn.Sequential(
-            nn.Linear(2, 48),
+            nn.Linear(2, 64),
             nn.ReLU(),
-            nn.Linear(48, 48),
+            nn.Linear(64, 48),
             nn.ReLU(),
-            nn.Linear(48, 16),
+            nn.Linear(48, 32),
             nn.ReLU(),
-            nn.Linear(16,1)
+            nn.Linear(32,1)
         )
 
         # self.g = value_function
@@ -205,9 +205,10 @@ class NeuralNetwork(pl.LightningModule):
 
         hs = self.h(s)
 
+        nominal_safe_mask = (torch.norm(s) < 1.5)
         # 1.) h > 0 in the safe region
-        hs_safe = hs[torch.logical_not(unsafe_mask)]
-        eps = torch.min(self.dynamic_system.state_constraints(s[torch.logical_not(unsafe_mask)]), dim=1, keepdim=True).values
+        hs_safe = hs[nominal_safe_mask]
+        eps = 1 # torch.min(self.dynamic_system.state_constraints(s[torch.logical_not(unsafe_mask)]), dim=1, keepdim=True).values
         
         safe_violation = coefficient_for_safe_state_loss *  F.relu( eps - hs_safe)
         safe_hs_term =  safe_violation.mean()
@@ -222,7 +223,7 @@ class NeuralNetwork(pl.LightningModule):
        
 
         hs_unsafe = hs[unsafe_mask]
-        eps = -torch.min(self.dynamic_system.state_constraints(s[unsafe_mask]), dim=1, keepdim=True).values
+        eps = 1 # -torch.min(self.dynamic_system.state_constraints(s[unsafe_mask]), dim=1, keepdim=True).values
         
         unsafe_violation = coefficient_for_unsafe_state_loss *  F.relu(eps + hs_unsafe)
         
@@ -1317,24 +1318,24 @@ class NeuralNetwork(pl.LightningModule):
     def on_train_epoch_start(self) -> None:
         print("################## the epoch start #####################")
         self.epoch_start_time = time.time()
-        
+        print(f"current training stage is {self.training_stage}")
         return super().on_train_epoch_start()
 
     def training_step(self, batch, batch_idx):
         """Conduct the training step for the given batch"""
         # Extract the input and masks from the batch
         s, safe_mask, unsafe_mask, grid_gap = batch
-        model = BoundedModule(self.h, s)
-        model.train()
+        # model = BoundedModule(self.h, s)
+        # model.train()
 
-        copy_h =  copy.deepcopy(self.h)
-        model_jacobian = BoundedModule(copy_h, s,
-                                        bound_opts={
-                                                        'sparse_features_alpha': False,
-                                                        'sparse_spec_alpha': False,
-                                                    })
-        model_jacobian.augment_gradient_graph(s)
-        model_jacobian.train()
+        # copy_h =  copy.deepcopy(self.h)
+        # model_jacobian = BoundedModule(copy_h, s,
+        #                                 bound_opts={
+        #                                                 'sparse_features_alpha': False,
+        #                                                 'sparse_spec_alpha': False,
+        #                                             })
+        # model_jacobian.augment_gradient_graph(s)
+        # model_jacobian.train()
 
         # Compute the losses
         component_losses = {}
@@ -1348,17 +1349,17 @@ class NeuralNetwork(pl.LightningModule):
 
         if self.training_stage == 1:
             component_losses.update(
-                self.boundary_loss(s, safe_mask, unsafe_mask, coefficient_for_safe_state_loss=40, coefficient_for_unsafe_state_loss=100)
+                self.boundary_loss(s, safe_mask, unsafe_mask, coefficient_for_safe_state_loss=100, coefficient_for_unsafe_state_loss=100)
             )
             
             component_losses.update(
                 self.descent_loss(
-                    s, safe_mask, unsafe_mask, requires_grad=self.require_grad_descent_loss, coefficients_descent_loss=40
+                    s, safe_mask, unsafe_mask, requires_grad=self.require_grad_descent_loss, coefficients_descent_loss=1
                 )
             )
 
         if self.training_stage == 2:
-
+            
             component_losses.update(
                 self.epsilon_decent_loss(
                     s, safe_mask, unsafe_mask, grid_gap, model, model_jacobian, coefficients_descent_loss=1, requires_grad=self.require_grad_descent_loss
@@ -1450,12 +1451,12 @@ class NeuralNetwork(pl.LightningModule):
             self.log(loss_key + "/train", avg_losses[loss_key], sync_dist=True)
 
         if self.training_stage == 0 and (avg_losses["loss"] < 10): # warm up, shape h and g
-            self.training_stage = 2  # start to consider condition 3
+            self.training_stage = 1  # start to consider condition 3
             self.epoch_record = self.current_epoch
-        elif self.training_stage == 1 and (avg_losses["loss"] < 3 or (self.current_epoch - self.epoch_record) > 30): 
-            self.training_stage = 2 # start to consider epsilon loss
-            self.epoch_record = self.current_epoch
-        print(f"current training stage is {self.training_stage}")
+        # elif self.training_stage == 1 and (avg_losses["loss"] < 3 or (self.current_epoch - self.epoch_record) > 30): 
+        #     self.training_stage = 2 # start to consider epsilon loss
+        #     self.epoch_record = self.current_epoch
+        
 
 
 
@@ -1617,7 +1618,7 @@ class NeuralNetwork(pl.LightningModule):
 
     def configure_optimizers(self):
         clbf_params = list(self.h.parameters()) # list(self.g.parameters())
-        clbf_opt = torch.optim.SGD(
+        clbf_opt = torch.optim.Adam(
             clbf_params,
             lr=self.primal_learning_rate,
             weight_decay=1e-6,
