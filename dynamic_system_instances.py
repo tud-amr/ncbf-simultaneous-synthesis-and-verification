@@ -34,7 +34,7 @@ car1.set_nominal_state_constraints(rou_n)
 domain_lower_bd2 = torch.Tensor([-torch.pi, -5]).float()
 domain_upper_bd2 = -domain_lower_bd2
 
-control_lower_bd2 =torch.Tensor([-2]).float()
+control_lower_bd2 =torch.Tensor([-12]).float()
 control_upper_bd2 = -control_lower_bd2
     
 def rou2(s: torch.Tensor) -> torch.Tensor:
@@ -50,7 +50,7 @@ def rou_n2(s: torch.Tensor) -> torch.Tensor:
     return rou_1.unsqueeze(dim=1)
 
 
-inverted_pendulum_1 = InvertedPendulum(m=0.1, b=0.1)
+inverted_pendulum_1 = InvertedPendulum(m=1, b=0.1)
 
 inverted_pendulum_1.set_domain_limits(domain_lower_bd2, domain_upper_bd2)
 inverted_pendulum_1.set_control_limits(control_lower_bd2, control_upper_bd2)

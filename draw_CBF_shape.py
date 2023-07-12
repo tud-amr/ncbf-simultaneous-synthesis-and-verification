@@ -24,7 +24,7 @@ data_module = DataModule(system=inverted_pendulum_1, val_split=0, train_batch_si
 data_module.prepare_data()
 
 s_training = data_module.s_training
-s_training = torch.load("s_training.pt")
+# s_training = torch.load("s_training.pt")
 
 ######################## extract test results ###########################
 
@@ -151,7 +151,7 @@ legend_elements = [
                    ]
 
 plt.legend(handles=legend_elements, bbox_to_anchor=(1, 1.1),loc='upper right')
-
+plt.savefig("./test_fig/shape_of_cbf.png")
 
 plt.figure()
 contours2 = plt.contour(hVS0_XData, hVS0_YData, hVS0_ZData, levels=[0])
@@ -171,7 +171,7 @@ ax1.set_title('Filled Contours Plot')
 plt.xlabel(r"$\theta$")
 plt.ylabel(r"$\dot{\theta}$")
 ax1.set_title("contour of CBF")
-
+plt.savefig("test_fig/contour_of_cbf.png")
 
 ####################### plot safe violation point #####################
 # create safe_violation data_frame
@@ -267,7 +267,7 @@ plt.plot(x_unsafe2, u_unsafe, c='y', linewidth=2)
 # plt.scatter(safe_boundary_state[:, 0], safe_boundary_state[:,1], s=0.5, c='y')
 
 plt.scatter(X_descent, U_descent, s=10, c='r')
-
+plt.savefig("./test_fig/CBC_violation.png")
 # descent_violation_df = pd.DataFrame({"x": X_descent, "u": U_descent}, index=range(0, X_descent.shape[0]))
 # fig, ax = plt.subplots()
 # sns.scatterplot(data=descent_violation_df, x="x", y="u", marker="X", ax=ax)

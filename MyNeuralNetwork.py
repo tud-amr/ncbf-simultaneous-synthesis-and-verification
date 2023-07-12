@@ -19,8 +19,8 @@ import gurobipy as gp
 from gurobipy import GRB
 from qpth.qp import QPFunction
 
-from auto_LiRPA import BoundedModule, BoundedTensor
-from auto_LiRPA.perturbations import *
+# from auto_LiRPA import BoundedModule, BoundedTensor
+# from auto_LiRPA.perturbations import *
 from collections import defaultdict
 
 from matplotlib import cm
@@ -44,9 +44,11 @@ class NeuralNetwork(pl.LightningModule):
         # value_function: ValueFunctionNeuralNetwork,
         require_grad_descent_loss :bool = True,
         learn_shape_epochs: int = 10,
-        primal_learning_rate: float = 1e-4,
+        first_train: bool = False,
+        fine_tune: bool = False,
+        primal_learning_rate: float = 1e-3,
         gamma: float = 0.9,
-        clf_lambda: float = 1.0,
+        clf_lambda: float = 0.0,
         clf_relaxation_penalty: float = 50.0,
         ):
 
@@ -57,16 +59,27 @@ class NeuralNetwork(pl.LightningModule):
         self.primal_learning_rate = primal_learning_rate
         self.dt = self.dynamic_system.dt
         self.gamma = gamma
+        self.first_train = first_train
+        self.fine_tune = fine_tune
         self.require_grad_descent_loss = require_grad_descent_loss
-        self.flatten = nn.Flatten()
         self.h = nn.Sequential(
-            nn.Linear(2, 64),
+            nn.Linear(2, 256),
             nn.ReLU(),
-            nn.Linear(64, 48),
+            nn.Linear(256, 256),
             nn.ReLU(),
-            nn.Linear(48, 32),
+            nn.Linear(256, 256),
             nn.ReLU(),
-            nn.Linear(32,1)
+            nn.Linear(256,1)
+        )
+
+        self.h0 = nn.Sequential(
+            nn.Linear(2, 256),
+            nn.ReLU(),
+            nn.Linear(256, 256),
+            nn.ReLU(),
+            nn.Linear(256, 256),
+            nn.ReLU(),
+            nn.Linear(256,1)
         )
 
         # self.g = value_function
@@ -80,9 +93,10 @@ class NeuralNetwork(pl.LightningModule):
         self.training_stage = 0
 
         self.generate_cvx_solver()
+        self.generate_cvx_solver2()
         self.generate_convex_relaxation_solver()
 
-
+        self.use_h0 = False
     
     def prepare_data(self):
         return self.data_module.prepare_data()
@@ -99,6 +113,10 @@ class NeuralNetwork(pl.LightningModule):
 
     def test_dataloader(self):
         return self.data_module.test_dataloader()
+
+    def set_previous_cbf(self, h):
+        self.h0.load_state_dict(h.state_dict())
+        self.use_h0 = True
 
     def forward(self, s):
         hs = self.h(s)
@@ -204,13 +222,19 @@ class NeuralNetwork(pl.LightningModule):
         loss = []
 
         hs = self.h(s)
-
-        nominal_safe_mask = (torch.norm(s) < 1.5)
-        # 1.) h > 0 in the safe region
-        hs_safe = hs[nominal_safe_mask]
-        eps = 1 # torch.min(self.dynamic_system.state_constraints(s[torch.logical_not(unsafe_mask)]), dim=1, keepdim=True).values
         
-        safe_violation = coefficient_for_safe_state_loss *  F.relu( eps - hs_safe)
+        # 1.) h > 0 in the safe region
+        if not self.use_h0:
+            eps = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values
+            
+            nominal_safe_mask = (eps > 2.5)
+        else:
+            eps = self.h0(s) * 1.1
+            nominal_safe_mask = (eps > 0)
+
+        hs_safe = hs[nominal_safe_mask]
+
+        safe_violation = coefficient_for_safe_state_loss *  F.relu( eps[nominal_safe_mask] - hs_safe)
         safe_hs_term =  safe_violation.mean()
         if not torch.isnan(safe_hs_term):
             loss.append(("safe_region_term", safe_hs_term))
@@ -223,7 +247,7 @@ class NeuralNetwork(pl.LightningModule):
        
 
         hs_unsafe = hs[unsafe_mask]
-        eps = 1 # -torch.min(self.dynamic_system.state_constraints(s[unsafe_mask]), dim=1, keepdim=True).values
+        eps = -torch.min(self.dynamic_system.state_constraints(s[unsafe_mask]), dim=1, keepdim=True).values
         
         unsafe_violation = coefficient_for_unsafe_state_loss *  F.relu(eps + hs_unsafe)
         
@@ -275,16 +299,17 @@ class NeuralNetwork(pl.LightningModule):
         eps = 0.1
         H = self.h(s)
 
+        positive_mask = (H > -0.2)
         
         condition_active = torch.sigmoid(10 * (1.0 + eps - H))
 
         # u_qp, qp_relaxation = self.solve_CLF_QP(s, requires_grad=requires_grad, epsilon=0)
-        u_qp = self.solve_CLF_QP(s, requires_grad=requires_grad, epsilon=0)
-        
+        # u_qp = self.solve_CLF_QP(s, requires_grad=requires_grad, epsilon=0)
+       
         # qp_relaxation = torch.mean(qp_relaxation, dim=-1)
 
         # ####### Minimize the qp relaxation to encourage satisfying the decrease condition #################
-        # qp_relaxation_loss = qp_relaxation[torch.logical_not(unsafe_mask)].mean()
+        # qp_relaxation_loss = qp_relaxation[positive_mask.squeeze(dim=-1)].mean()
         # loss.append(("QP_relaxation", qp_relaxation_loss))
 
         ############### Now compute the decrease using linearization #######################
@@ -293,7 +318,11 @@ class NeuralNetwork(pl.LightningModule):
         clbf_descent_acc_lin = torch.tensor(0.0).type_as(s)
         # Get the current value of the CLBF and its Lie derivatives
         Lf_V, Lg_V = self.V_lie_derivatives(s)
-    
+
+        u_min, u_max = self.dynamic_system.control_limits
+        
+        u_qp = (Lg_V >= 0)*u_max.to(s.device) + (Lg_V < 0)*u_min.to(s.device)
+
         # Use the dynamics to compute the derivative of V
         Vdot = Lf_V[:, :].unsqueeze(1) + torch.bmm(
             Lg_V[:, :].unsqueeze(1),
@@ -302,7 +331,7 @@ class NeuralNetwork(pl.LightningModule):
         Vdot = Vdot.reshape(H.shape)
         violation = coefficients_descent_loss * F.relu(eps - (Vdot + self.clf_lambda * H))
         violation = violation * condition_active
-        clbf_descent_term_lin = clbf_descent_term_lin + violation[torch.logical_not(unsafe_mask)].mean()
+        clbf_descent_term_lin = clbf_descent_term_lin + violation[positive_mask].mean()
         clbf_descent_acc_lin = clbf_descent_acc_lin + (violation >= eps).sum() / (
             violation.nelement()
         )
@@ -326,7 +355,7 @@ class NeuralNetwork(pl.LightningModule):
         )
         violation = coefficients_descent_loss * violation * condition_active
 
-        clbf_descent_term_sim = clbf_descent_term_sim + violation[torch.logical_not(unsafe_mask)].mean()
+        clbf_descent_term_sim = clbf_descent_term_sim + violation[positive_mask].mean()
         clbf_descent_acc_sim = clbf_descent_acc_sim + (violation >= eps).sum() / (
             violation.nelement() 
         )
@@ -344,7 +373,7 @@ class NeuralNetwork(pl.LightningModule):
         safe_mask: torch.Tensor,
         unsafe_mask: torch.Tensor,
         grid_gap: torch.Tensor,
-        model: BoundedModule,
+        model: torch.Tensor,
         coefficients_unsafe_epsilon_loss: float=1e2,
     ) -> List[Tuple[str, torch.Tensor]]:
         '''
@@ -379,8 +408,8 @@ class NeuralNetwork(pl.LightningModule):
         safe_mask: torch.Tensor,
         unsafe_mask: torch.Tensor,
         grid_gap: torch.Tensor,
-        model: BoundedModule,
-        model_jacobian: BoundedModule,
+        model: torch.Tensor,
+        model_jacobian: torch.Tensor,
         coefficients_descent_loss: float=1e2,
         accuracy: bool = False,
         requires_grad: bool = False,
@@ -621,6 +650,61 @@ class NeuralNetwork(pl.LightningModule):
             problem, variables=variables, parameters=parameters
         )
 
+
+    def generate_cvx_solver2(self):
+        # Save the other parameters
+        
+
+        # Since we want to be able to solve the CLF-QP differentiably, we need to set
+        # up the CVXPyLayers optimization. First, we define variables for each control
+        # input and the relaxation in each scenario
+        u = cp.Variable(self.dynamic_system.nu)
+       
+        # Next, we define the parameters that will be supplied at solve-time: the value
+        # of the Lyapunov function, its Lie derivatives, the relaxation penalty, and
+        # the reference control input   
+        
+        
+        Lg_V_params = []
+        
+       
+        Lg_V_params.append(cp.Parameter(self.dynamic_system.nu))
+
+
+        # These allow us to define the constraints
+        constraints = []
+        
+        # CLF decrease constraint (with relaxation)
+        # constraints.append(
+        #     Lf_V_params[0]
+        #     + Lg_V_params[0] @ u
+        #     + self.clf_lambda * V_param
+        #     + clf_relaxations[0]
+        #     >= 0
+        # )
+
+
+        # Control limit constraints
+        lower_lim,  upper_lim  = self.dynamic_system.control_limits
+        for control_idx in range(self.dynamic_system.nu):
+            constraints.append(u[control_idx] >= lower_lim[control_idx])
+            constraints.append(u[control_idx] <= upper_lim[control_idx])
+
+
+        # And define the objective
+        objective_expression = cp.sum(Lg_V_params[0] * u)
+        
+        objective = cp.Minimize(objective_expression)
+
+        problem = cp.Problem(objective, constraints)
+        assert problem.is_dpp()
+        variables = [u]
+        parameters =  Lg_V_params
+        
+        self.differentiable_qp_solver2 = CvxpyLayer(
+            problem, variables=variables, parameters=parameters
+        )
+
     def generate_convex_relaxation_solver(self):
         # define optimization variables
         
@@ -720,6 +804,55 @@ class NeuralNetwork(pl.LightningModule):
 
         return u_result.type_as(x), r_result.type_as(x)
 
+
+    def _solve_CLF_QP_cvxpylayers2(
+        self,
+        x: torch.Tensor,
+        u_ref: torch.Tensor,
+        V: torch.Tensor,
+        Lf_V: torch.Tensor,
+        Lg_V: torch.Tensor,
+        relaxation_penalty: float,
+        epsilon : float = 0.1,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Determine the control input for a given state using a QP. Solves the QP using
+        CVXPyLayers, which does allow for backpropagation, but is slower and less
+        accurate than Gurobi.
+
+        args:
+            x: bs x self.dynamics_model.n_dims tensor of state
+            u_ref: bs x self.dynamics_model.n_controls tensor of reference controls
+            V: bs x 1 tensor of CLF values,
+            Lf_V: bs x 1 tensor of CLF Lie derivatives,
+            Lg_V: bs x self.dynamics_model.n_controls tensor of CLF Lie derivatives,
+            relaxation_penalty: the penalty to use for CLF relaxation.
+        returns:
+            u: bs x self.dynamics_model.n_controls tensor of control inputs
+            relaxation: bs x 1 tensor of how much the CLF had to be relaxed in each
+                        case
+        """
+        # The differentiable solver must allow relaxation
+        relaxation_penalty = min(relaxation_penalty, 1e6)
+
+        # Assemble list of params
+        self.n_scenarios = 1
+        params = []
+        
+        for i in range(self.n_scenarios):
+            params.append(Lg_V[:, :])
+
+        # We've already created a parameterized QP solver, so we can use that
+        result = self.differentiable_qp_solver2(
+            *params,
+            solver_args={"max_iters": 50000000},
+        )
+
+        # Extract the results
+        u_result = result[0]
+        
+
+        return u_result.type_as(x)
+
     def _solve_convex_relataxion(
         self,
         lb_j: torch.Tensor,
@@ -807,9 +940,17 @@ class NeuralNetwork(pl.LightningModule):
             #     x, u_ref, H, Lf_V, Lg_V, relaxation_penalty, epsilon=epsilon
             # )
 
-            return self._solve_CLF_QP_OptNet2(
+            return self._solve_CLF_QP_cvxpylayers2(
                 x, u_ref, H, Lf_V, Lg_V, relaxation_penalty, epsilon=epsilon
             )
+
+            # return self._solve_CLF_QP_OptNet(
+            #     x, u_ref, H, Lf_V, Lg_V, relaxation_penalty, epsilon=epsilon
+            # )
+
+            # return self._solve_CLF_QP_OptNet2(
+            #     x, u_ref, H, Lf_V, Lg_V, relaxation_penalty, epsilon=epsilon
+            # )
         else:
             return self._solve_CLF_QP_gurobi(
             x, u_ref, H, Lf_V, Lg_V, relaxation_penalty, epsilon=epsilon
@@ -1306,7 +1447,7 @@ class NeuralNetwork(pl.LightningModule):
         
         # _, Lg_V = self.g.G_lie_derivatives(s)
 
-        u_new = self.get_nominal_control(s)
+        # u_new = self.get_nominal_control(s)
         
         # print(f"u = {u}, u_new = {u_new}")
         
@@ -1340,34 +1481,35 @@ class NeuralNetwork(pl.LightningModule):
         # Compute the losses
         component_losses = {}
 
+        s_random = s + 0.1 * torch.randn(s.shape[0], self.dynamic_system.ns, requires_grad=True).to(s.device)
         
-        if self.training_stage == 0:
-            component_losses.update(
-                self.boundary_loss(s, safe_mask, unsafe_mask)
-            )
-        
-
-        if self.training_stage == 1:
-            component_losses.update(
-                self.boundary_loss(s, safe_mask, unsafe_mask, coefficient_for_safe_state_loss=100, coefficient_for_unsafe_state_loss=100)
-            )
-            
-            component_losses.update(
-                self.descent_loss(
-                    s, safe_mask, unsafe_mask, requires_grad=self.require_grad_descent_loss, coefficients_descent_loss=1
+        if not self.fine_tune:
+            if self.training_stage == 0:
+                component_losses.update(
+                    self.boundary_loss(s_random, safe_mask, unsafe_mask)
                 )
-            )
-
-        if self.training_stage == 2:
             
-            component_losses.update(
-                self.epsilon_decent_loss(
-                    s, safe_mask, unsafe_mask, grid_gap, model, model_jacobian, coefficients_descent_loss=1, requires_grad=self.require_grad_descent_loss
+
+            if self.training_stage == 1:
+                component_losses.update(
+                    self.boundary_loss(s_random, safe_mask, unsafe_mask, coefficient_for_safe_state_loss=50, coefficient_for_unsafe_state_loss=100)
                 )
-            )
-            component_losses.update(
-                 self.epsilon_area_loss(s, safe_mask, unsafe_mask, grid_gap,model, coefficients_unsafe_epsilon_loss=100)
-            )
+                
+                component_losses.update(
+                    self.descent_loss(
+                        s_random, safe_mask, unsafe_mask, requires_grad=self.require_grad_descent_loss, coefficients_descent_loss=1
+                    )
+                )
+        else:
+                
+                component_losses.update(
+                    self.epsilon_decent_loss(
+                        s, safe_mask, unsafe_mask, grid_gap, model, model_jacobian, coefficients_descent_loss=1, requires_grad=self.require_grad_descent_loss
+                    )
+                )
+                component_losses.update(
+                    self.epsilon_area_loss(s, safe_mask, unsafe_mask, grid_gap,model, coefficients_unsafe_epsilon_loss=100)
+                )
 
         
 
@@ -1382,7 +1524,7 @@ class NeuralNetwork(pl.LightningModule):
 
         batch_dict = {"loss": total_loss, **component_losses}
 
-        del copy_h
+        # del copy_h
 
         return batch_dict
     
@@ -1420,7 +1562,7 @@ class NeuralNetwork(pl.LightningModule):
         value_function_loss_name = ['value_function_loss_term']
         safety_loss_name = ['unsafe_region_term', 'descent_term_linearized', 'hji_vi_loss_term',
                             'descent_term_simulated','descent_term_epsilon_area','unsafe_region_epsilon_term']
-        performance_lose_name = ['safe_region_term']
+        performance_lose_name = ['safe_region_term', 'init_loss_term']
         for key in avg_losses.keys():
             if key in safety_loss_name:
                 safety_losses += avg_losses[key]
@@ -1450,6 +1592,10 @@ class NeuralNetwork(pl.LightningModule):
             # Log the other losses
             self.log(loss_key + "/train", avg_losses[loss_key], sync_dist=True)
 
+
+        if self.training_stage == 1 and (avg_losses["loss"] < 3e-2):
+            self.trainer.should_stop = True
+
         if self.training_stage == 0 and (avg_losses["loss"] < 10): # warm up, shape h and g
             self.training_stage = 1  # start to consider condition 3
             self.epoch_record = self.current_epoch
@@ -1457,8 +1603,6 @@ class NeuralNetwork(pl.LightningModule):
         #     self.training_stage = 2 # start to consider epsilon loss
         #     self.epoch_record = self.current_epoch
         
-
-
 
     def validation_step(self, batch, batch_idx):
         """Conduct the validation step for the given batch"""
@@ -1618,7 +1762,7 @@ class NeuralNetwork(pl.LightningModule):
 
     def configure_optimizers(self):
         clbf_params = list(self.h.parameters()) # list(self.g.parameters())
-        clbf_opt = torch.optim.Adam(
+        clbf_opt = torch.optim.SGD(
             clbf_params,
             lr=self.primal_learning_rate,
             weight_decay=1e-6,
