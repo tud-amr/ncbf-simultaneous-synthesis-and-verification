@@ -52,8 +52,8 @@ class InvertedPendulum(ControlAffineSystem):
         B = np.array([0, 1/(self.m * self.L **2)]).reshape((self.ns, self.nu))
         Q = np.eye(self.ns)
         R = np.eye(self.nu)
-        K, _, _ = control.lqr(A, B, Q, R)
-        self.K_lqr = torch.from_numpy(K).float()
+        # K, _, _ = control.lqr(A, B, Q, R)
+        # self.K_lqr = torch.from_numpy(K).float()
 
     def f(self, s: torch.Tensor) -> torch.Tensor:
         batch_size = s.shape[0]

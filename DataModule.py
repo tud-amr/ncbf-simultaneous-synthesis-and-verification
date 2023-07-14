@@ -19,6 +19,7 @@ class DataModule(pl.LightningDataModule):
         test_batch_size: int = 128,
         train_grid_gap: float = 0.01,
         test_grid_gap: float = 0.1,
+        minimum_grid_gap: float = 0.01
     ):
         super().__init__()
         self.system = system
@@ -28,7 +29,7 @@ class DataModule(pl.LightningDataModule):
         self.test_batch_size = test_batch_size
         self.train_grid_gap = train_grid_gap
         self.test_grid_gap = test_grid_gap
-
+        self.minimum_grid_gap = minimum_grid_gap
         self.initalize_data()
 
     def initalize_data(self):
@@ -111,25 +112,25 @@ class DataModule(pl.LightningDataModule):
         print("\t----------------------")
         print(f"\t{self.s_testing.shape[0]} testing")
 
-        # Turn these into tensor datasets
-        self.training_data = TensorDataset(
-            self.s_training,
-            self.safe_mask_training,
-            self.unsafe_mask_training,
-            self.grid_gap_training
-        )
-        self.validation_data = TensorDataset(
-            self.s_validation,
-            self.safe_mask_validation,
-            self.unsafe_mask_validation,
-            self.grid_gap_validation
-            )
-        self.testing_data = TensorDataset(
-            self.s_testing,
-            self.safe_mask_testing,
-            self.unsafe_mask_testing,
-            self.grid_gap_testing
-            )
+        # # Turn these into tensor datasets
+        # self.training_data = TensorDataset(
+        #     self.s_training,
+        #     self.safe_mask_training,
+        #     self.unsafe_mask_training,
+        #     self.grid_gap_training
+        # )
+        # self.validation_data = TensorDataset(
+        #     self.s_validation,
+        #     self.safe_mask_validation,
+        #     self.unsafe_mask_validation,
+        #     self.grid_gap_validation
+        #     )
+        # self.testing_data = TensorDataset(
+        #     self.s_testing,
+        #     self.safe_mask_testing,
+        #     self.unsafe_mask_testing,
+        #     self.grid_gap_testing
+        #     )
     
 
     def expand_leave(self, leave_node):
@@ -138,7 +139,7 @@ class DataModule(pl.LightningDataModule):
         leave_node_s = leave_node.data[0]
         leave_node_grid_gap = leave_node.data[1]
 
-        if torch.min(leave_node_grid_gap) > 0.05:
+        if torch.min(leave_node_grid_gap) > self.minimum_grid_gap:
             s_dim = leave_node_s.shape[1]
             dir = torch.tensor([0.5, -0.5])
             combine = list(product(dir, repeat=s_dim))
