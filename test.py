@@ -18,7 +18,7 @@ print(f"Using {device} device")
 
 data_module = DataModule(system=inverted_pendulum_1, val_split=0.1, train_batch_size=6, test_batch_size=128, train_grid_gap=0.1, test_grid_gap=0.01)
 data_module.prepare_data()
-NN0 = NeuralNetwork.load_from_checkpoint("CBF_logs/robust_training_maximum_without_nominal_controller/lightning_logs/version_2/checkpoints/epoch=83-step=336.ckpt", dynamic_system=inverted_pendulum_1, data_module=data_module)
+NN0 = NeuralNetwork.load_from_checkpoint("CBF_logs/robust_training_maximum_without_nominal_controller/lightning_logs/version_4/checkpoints/epoch=499-step=1500.ckpt", dynamic_system=inverted_pendulum_1, data_module=data_module)
 
 NN = NeuralNetwork(dynamic_system=inverted_pendulum_1, data_module=data_module, require_grad_descent_loss=True, fine_tune=False)
 NN.set_previous_cbf(NN0.h)

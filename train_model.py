@@ -22,7 +22,7 @@ def extract_number(f):
     return (int(s[0]) if s else -1,f)
 
 
-first_train = False
+first_train = True
 fine_tune = False
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -37,18 +37,19 @@ default_root_dir = "./CBF_logs/robust_training_maximum_without_nominal_controlle
 if first_train:
 
 
-    NN = NeuralNetwork(dynamic_system=inverted_pendulum_1, data_module=data_module, require_grad_descent_loss=True)
-
+    # NN = NeuralNetwork(dynamic_system=inverted_pendulum_1, data_module=data_module, require_grad_descent_loss=True)
+    NN = NeuralNetwork.load_from_checkpoint("CBF_logs/robust_training_maximum_without_nominal_controller/lightning_logs/version_51/checkpoints/epoch=299-step=900.ckpt",dynamic_system=inverted_pendulum_1, data_module=data_module, require_grad_descent_loss=True)
+    
 
     trainer = pl.Trainer(
         accelerator = "gpu",
         devices = 1,
-        max_epochs=1000,
+        max_epochs=300,
         # callbacks=[ EarlyStopping(monitor="Safety_loss/train", mode="min", check_on_train_epoch_end=True, strict=False, patience=50, stopping_threshold=1e-3) ], 
         # callbacks=[StochasticWeightAveraging(swa_lrs=1e-2)],
         default_root_dir=default_root_dir,
         reload_dataloaders_every_n_epochs=15,
-        accumulate_grad_batches=8,
+        accumulate_grad_batches=12,
         # gradient_clip_val=0.5
         )
 
@@ -86,12 +87,12 @@ else:
         trainer = pl.Trainer(
             accelerator = "gpu",
             devices = 1,
-            max_epochs=60,
+            max_epochs=500,
             # callbacks=[ EarlyStopping(monitor="Safety_loss/train", mode="min", check_on_train_epoch_end=True, strict=False, patience=50, stopping_threshold=1e-3) ], 
             # callbacks=[StochasticWeightAveraging(swa_lrs=1e-2)],
             default_root_dir=default_root_dir,
             reload_dataloaders_every_n_epochs=15,
-            accumulate_grad_batches=8,
+            accumulate_grad_batches=12,
             # gradient_clip_val=0.5
             )
 
@@ -116,7 +117,7 @@ else:
             # callbacks=[StochasticWeightAveraging(swa_lrs=1e-2)],
             default_root_dir=default_root_dir,
             reload_dataloaders_every_n_epochs=15,
-            accumulate_grad_batches=8,
+            accumulate_grad_batches=12,
             )
 
         torch.autograd.set_detect_anomaly(True)

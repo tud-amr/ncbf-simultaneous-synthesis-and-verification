@@ -103,9 +103,9 @@ contours2 = plt.contour(hVS0_XData, hVS0_YData, hVS0_ZData, levels=[0], colors='
 
 # create h_shape data_frame
 
-X = h_shape_s[:, 0].cpu().numpy()
-U = h_shape_s[:, 1].cpu().numpy()
-H = h_shape_val.squeeze(dim=1).cpu().numpy()
+X = h_shape_s[:, 0].detach().cpu().numpy()
+U = h_shape_s[:, 1].detach().cpu().numpy()
+H = h_shape_val.squeeze(dim=1).detach().cpu().numpy()
 
 H_positive_mask = H > 0
 
@@ -132,7 +132,7 @@ x_unsafe2 = - np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
 # plt.plot(x_unsafe1, u_unsafe, c='y', linewidth=2)
 # plt.plot(x_unsafe2, u_unsafe, c='y', linewidth=2)
 
-safe_boundary_state = safe_boundary_state.cpu().numpy()
+safe_boundary_state = safe_boundary_state.detach().cpu().numpy()
 # plt.scatter(safe_boundary_state[:, 0], safe_boundary_state[:,1], s=0.5, c='y')
 
 # plt.scatter(s_training[:,0], s_training[:,1], marker='X', s=10, c='k')
@@ -176,8 +176,8 @@ plt.savefig("test_fig/contour_of_cbf.png")
 ####################### plot safe violation point #####################
 # create safe_violation data_frame
 
-X_safe_vio = s_safe_violation[:, 0].cpu().numpy()
-U_safe_vio = s_safe_violation[:, 1].cpu().numpy()
+X_safe_vio = s_safe_violation[:, 0].detach().cpu().numpy()
+U_safe_vio = s_safe_violation[:, 1].detach().cpu().numpy()
 
 print(f"there are {X_safe_vio.shape[0]} point violate safe reagion")
 
@@ -208,8 +208,8 @@ x_unsafe2 = - np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
 ######################## plot unsafe violation points ##########################
 # create unsafe_violation data_frame
 
-X_unsafe_vio = s_unsafe_violation[:, 0].cpu().numpy()
-U_unsafe_vio = s_unsafe_violation[:, 1].cpu().numpy()
+X_unsafe_vio = s_unsafe_violation[:, 0].detach().cpu().numpy()
+U_unsafe_vio = s_unsafe_violation[:, 1].detach().cpu().numpy()
 
 print(f"there are {X_unsafe_vio.shape[0]} point violate unsafe reagion")
 
@@ -234,7 +234,7 @@ plt.plot(x_unsafe2, u_unsafe, c='y', linewidth=2)
 # plt.scatter(safe_boundary_state[:, 0], safe_boundary_state[:,1], s=0.5, c='y')
 
 plt.scatter(X_unsafe_vio, U_unsafe_vio, marker='X', c='r')
-
+plt.savefig("test_fig/unsafe_area_violation.png")
 
 # plt.figure()
 # sns.scatterplot(data=s_unsafe_violation_df, x="x", y="u", marker="X")
@@ -245,8 +245,8 @@ plt.scatter(X_unsafe_vio, U_unsafe_vio, marker='X', c='r')
 # create descent_violation data_frame
 
 
-X_descent = descent_violation[:, 0].cpu().numpy()
-U_descent = descent_violation[:, 1].cpu().numpy()
+X_descent = descent_violation[:, 0].detach().cpu().numpy()
+U_descent = descent_violation[:, 1].detach().cpu().numpy()
 
 print(f"there are {X_descent.shape[0]} points violate descent condition")
 
