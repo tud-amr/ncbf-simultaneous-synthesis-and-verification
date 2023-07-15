@@ -37,8 +37,8 @@ default_root_dir = "./CBF_logs/robust_training_maximum_without_nominal_controlle
 if first_train:
 
 
-    # NN = NeuralNetwork(dynamic_system=inverted_pendulum_1, data_module=data_module, require_grad_descent_loss=True)
-    NN = NeuralNetwork.load_from_checkpoint("CBF_logs/robust_training_maximum_without_nominal_controller/lightning_logs/version_51/checkpoints/epoch=299-step=900.ckpt",dynamic_system=inverted_pendulum_1, data_module=data_module, require_grad_descent_loss=True)
+    NN = NeuralNetwork(dynamic_system=inverted_pendulum_1, data_module=data_module, require_grad_descent_loss=True)
+    # NN = NeuralNetwork.load_from_checkpoint("CBF_logs/robust_training_maximum_without_nominal_controller/lightning_logs/version_51/checkpoints/epoch=299-step=900.ckpt",dynamic_system=inverted_pendulum_1, data_module=data_module, require_grad_descent_loss=True)
     
 
     trainer = pl.Trainer(
@@ -77,12 +77,12 @@ else:
     checkpoint_path = checkpoint_folder_dir + "/" + checkpoint_name 
     
     if not fine_tune:
-        NN0 = NeuralNetwork.load_from_checkpoint(checkpoint_path,dynamic_system=inverted_pendulum_1, data_module=data_module, require_grad_descent_loss=True)
+        NN0 = NeuralNetwork.load_from_checkpoint("CBF_logs/robust_training_maximum_without_nominal_controller/lightning_logs/version_0/checkpoints/epoch=3-step=12.ckpt",dynamic_system=inverted_pendulum_1, data_module=data_module, require_grad_descent_loss=True)
 
 
         NN = NeuralNetwork(dynamic_system=inverted_pendulum_1, data_module=data_module, require_grad_descent_loss=True)
         NN.set_previous_cbf(NN0.h)
-
+        NN.set_expand_factor(1.2)
         
         trainer = pl.Trainer(
             accelerator = "gpu",

@@ -50,7 +50,7 @@ class NeuralNetwork(pl.LightningModule):
         fine_tune: bool = False,
         primal_learning_rate: float = 1e-3,
         gamma: float = 0.9,
-        clf_lambda: float = 5,
+        clf_lambda: float = 10,
         clf_relaxation_penalty: float = 50.0,
         ):
 
@@ -87,6 +87,7 @@ class NeuralNetwork(pl.LightningModule):
         
         # self.K = self.dynamic_system.K
         self.clf_lambda = clf_lambda
+        self.expand_factor = 1.1
         self.clf_relaxation_penalty = clf_relaxation_penalty
         self.training_stage = 0
 
@@ -102,7 +103,7 @@ class NeuralNetwork(pl.LightningModule):
         self.safety_loss_name = ['unsafe_region_term']
         self.performance_lose_name = ['safe_region_term', 'init_loss_term', 'descent_boundary_term']
 
-        self.coefficient_for_performance_state_loss = 10
+        self.coefficient_for_performance_state_loss = 1
         self.coefficient_for_unsafe_state_loss = 1
         self.coefficients_descent_loss = 1
 
@@ -133,6 +134,8 @@ class NeuralNetwork(pl.LightningModule):
     def set_previous_cbf(self, h):
         self.h0.load_state_dict(h.state_dict())
         self.use_h0 = True
+    def set_expand_factor(self, factor):
+        self.expand_factor = factor
 
     def forward(self, s):
         hs = self.h(s)
@@ -292,7 +295,7 @@ class NeuralNetwork(pl.LightningModule):
             self.max_value_function = torch.maximum(temp, self.max_value_function.to(s.device))
             
             baseline = ls
-            nominal_safe_mask = (baseline > -10000)
+            nominal_safe_mask = (baseline > self.max_value_function*0.8)
             # baseline = torch.ones_like(ls)
            
         else:
@@ -312,7 +315,7 @@ class NeuralNetwork(pl.LightningModule):
 
                 ls = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values
             
-                baseline = self.h0(s) * 1.1 # + torch.clip( torch.minimum(1 * Vdot - 1 , 1*ls)  , min=-0.3, max=0.1)
+                baseline = self.h0(s) * self.expand_factor # + torch.clip( torch.minimum(1 * Vdot - 1 , 1*ls)  , min=-0.3, max=0.1)
                 nominal_safe_mask = (baseline > 0)
             if self.fine_tune:
                 baseline = self.h0(s) * 0.9 - 0.1
@@ -322,7 +325,7 @@ class NeuralNetwork(pl.LightningModule):
 
         hs_safe = hs[nominal_safe_mask]
         
-        safe_violation = coefficient_for_performance_state_loss * torch.abs( baseline[nominal_safe_mask]- hs_safe )
+        safe_violation = coefficient_for_performance_state_loss * F.relu( baseline[nominal_safe_mask]- hs_safe )
         safe_hs_term =  safe_violation.mean()
         if not torch.isnan(safe_hs_term):
             loss.append(("safe_region_term", safe_hs_term))
@@ -336,8 +339,8 @@ class NeuralNetwork(pl.LightningModule):
 
         hs_unsafe = hs[unsafe_mask]
         baseline = -torch.min(self.dynamic_system.state_constraints(s[unsafe_mask]), dim=1, keepdim=True).values
-        baseline = torch.ones_like(baseline)
-        unsafe_violation = coefficient_for_unsafe_state_loss *  F.relu( hs_unsafe)
+        # baseline = torch.ones_like(baseline)
+        unsafe_violation = coefficient_for_unsafe_state_loss *  F.relu( baseline + 0.2 + hs_unsafe)
         
         unsafe_hs_term = unsafe_violation.mean() 
         if not torch.isnan(unsafe_hs_term):
@@ -1606,7 +1609,7 @@ class NeuralNetwork(pl.LightningModule):
             adaptive_coefficient = 1
 
         self.coefficients_descent_loss = adaptive_coefficient * (1.0 - self.beta)  + self.beta * self.coefficients_descent_loss
-        self.coefficient_for_performance_state_loss = self.coefficient_for_performance_state_loss * 0.7
+        
         # print(f"current training stage is {self.training_stage}")
 
         batch_dict = {"loss": total_loss, **component_losses}
@@ -1688,13 +1691,15 @@ class NeuralNetwork(pl.LightningModule):
 
         if not self.fine_tune:
 
-            if self.training_stage == 1 and (safety_losses < 1e-3 and descent_losses < 0.05 ):
+            if self.training_stage == 1 and (safety_losses < 1e-3 and descent_losses < 1e-2 ):
                 self.trainer.should_stop = True
         
             if self.training_stage == 0 and (performance_losses < 10 and safety_losses < 0.1): # warm up, shape h and g
                 self.training_stage = 1  # start to consider condition 3
                 self.epoch_record = self.current_epoch
                 self.coefficient_for_performance_state_loss = 1
+            
+            self.coefficient_for_performance_state_loss = self.coefficient_for_performance_state_loss * 0.95
         else:
             
             if self.training_stage == 0 and (performance_losses < 0.1 and safety_losses < 0.1): # warm up, shape h and g
