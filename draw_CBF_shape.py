@@ -24,7 +24,7 @@ data_module = DataModule(system=inverted_pendulum_1, val_split=0, train_batch_si
 data_module.prepare_data()
 
 s_training = data_module.s_training
-# s_training = torch.load("s_training.pt")
+s_training = torch.load("s_training.pt")
 
 ######################## extract test results ###########################
 
@@ -135,7 +135,7 @@ x_unsafe2 = - np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
 safe_boundary_state = safe_boundary_state.detach().cpu().numpy()
 # plt.scatter(safe_boundary_state[:, 0], safe_boundary_state[:,1], s=0.5, c='y')
 
-# plt.scatter(s_training[:,0], s_training[:,1], marker='X', s=10, c='k')
+plt.scatter(s_training[:,0], s_training[:,1], marker='X', s=10, c='k')
 
 
 # custom legend
@@ -251,18 +251,22 @@ U_descent = descent_violation[:, 1].detach().cpu().numpy()
 print(f"there are {X_descent.shape[0]} points violate descent condition")
 
 plt.figure()
+contours = plt.contourf(hVS_XData, hVS_YData, hVS_ZData, levels=[-0.1, 0, 1], colors=['w','y','w'], extend='both')
+
+contours2 = plt.contour(hVS0_XData, hVS0_YData, hVS0_ZData, levels=[0], colors='grey', linewidth=5)
+
 plt.scatter(x_pos, u_pos, s=10, c='b', label="forward invariant set")
-plt.scatter(x_neg, u_neg, s=10, c='tab:gray')
+# plt.scatter(x_neg, u_neg, s=10, c='tab:gray')
 plt.xlabel(r"$\theta$")
 plt.ylabel(r"$\dot{\theta}$")
 plt.title("CBC violation area")
 plt.legend(bbox_to_anchor=(1, 1.1),loc='upper right')
 
-u_unsafe = np.arange(domain_limit_lb[1],domain_limit_ub[1],0.1)
-x_unsafe1 = np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
-x_unsafe2 = - np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
-plt.plot(x_unsafe1, u_unsafe, c='y', linewidth=2)
-plt.plot(x_unsafe2, u_unsafe, c='y', linewidth=2)
+# u_unsafe = np.arange(domain_limit_lb[1],domain_limit_ub[1],0.1)
+# x_unsafe1 = np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
+# x_unsafe2 = - np.ones(u_unsafe.shape[0]) * np.pi * 5 /6
+# plt.plot(x_unsafe1, u_unsafe, c='y', linewidth=2)
+# plt.plot(x_unsafe2, u_unsafe, c='y', linewidth=2)
 
 # plt.scatter(safe_boundary_state[:, 0], safe_boundary_state[:,1], s=0.5, c='y')
 

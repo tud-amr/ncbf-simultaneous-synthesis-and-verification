@@ -19,7 +19,7 @@ class DataModule(pl.LightningDataModule):
         test_batch_size: int = 128,
         train_grid_gap: float = 0.01,
         test_grid_gap: float = 0.1,
-        minimum_grid_gap: float = 0.01
+        minimum_grid_gap: float = 0.0001
     ):
         super().__init__()
         self.system = system

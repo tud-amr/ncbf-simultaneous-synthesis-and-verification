@@ -16,22 +16,22 @@ from torch.nn.parameter import Parameter
 from torch.optim.lr_scheduler import ExponentialLR, CosineAnnealingLR
 from torch.autograd import grad
 
-class AttentionBlock(nn.Module):
-    def __init__(self, num_inputs) -> None:
+class LinearBlock(nn.Module):
+    def __init__(self, num_inputs, num_outputs) -> None:
         super().__init__()
         
-        self.Z_layer = nn.Linear(num_inputs, num_inputs)
-        
+        self.Z_layer = nn.Linear(num_inputs, num_outputs)
+        self.activation_layer = nn.ReLU()
 
     def forward(self, input):
 
         z = self.Z_layer(input)
-        z = F.relu(z)
+        z = self.activation_layer(z)
 
         return z
 
 
-class AddBlock(nn.Module):
+class ResBlock(nn.Module):
     def __init__(self, num_input, expansion_factor=2) -> None:
         super().__init__()
         
@@ -40,18 +40,16 @@ class AddBlock(nn.Module):
         self.feed_forward = nn.Sequential(
                           nn.Linear(num_input, expansion_factor * num_input),
                           nn.ReLU(),
-                          nn.Linear(expansion_factor*num_input, num_input)
+                          nn.Linear(expansion_factor*num_input, num_input),
+                          nn.ReLU()
         )
 
-    def forward(self, X):
+    def forward(self, H, U, V):
         
-        
-        feed_forward_out = self.feed_forward(X)
+        Z = self.feed_forward(H)
 
-        residual_out = feed_forward_out + X
-
-        out = self.norm_layer(residual_out)
-
+        out = torch.mul( 1 -  Z, U ) + torch.mul(Z, V)
+        out = self.norm_layer(out)
         return out
 
 
@@ -60,28 +58,26 @@ class Transformer(nn.Module):
     def __init__(self, num_inputs, num_neurals):
         super().__init__()
 
-        
-        self.H_layer = nn.Linear(num_inputs, num_neurals)
+        self.V_layer = LinearBlock(num_inputs, num_neurals)
+        self.U_layer = LinearBlock(num_inputs, num_neurals)
+        self.H_layer = LinearBlock(num_inputs, num_neurals)
 
-        self.add_layer_1 = AddBlock(num_neurals)
-        self.add_layer_2 = AddBlock(num_neurals)
-        self.add_layer_3 = AddBlock(num_neurals)
+        self.res_block_1 = ResBlock(num_neurals)
+        self.res_block_2 = ResBlock(num_neurals)
+
         
         self.output_layer = nn.Linear(num_neurals, 1)
 
     def forward(self, input):
         
-
+        U = self.U_layer(input)
+        V = self.V_layer(input)
         H_1 = self.H_layer(input)
-        H_1 = F.relu(H_1)
+        H_2 = self.res_block_1(H_1, U, V)
+        H_3 = self.res_block_2(H_2, U, V)
         
-        H_2 = self.add_layer_1(H_1)
+        f = self.output_layer(H_3)
         
-        H_3 = self.add_layer_2(H_2)
-
-        H_4 = self.add_layer_3(H_3)
-
-        f = self.output_layer(H_4)
 
         return f
 
