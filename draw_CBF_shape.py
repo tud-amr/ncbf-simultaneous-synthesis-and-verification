@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import math
 import matplotlib.pyplot as plt
 import torch
@@ -15,6 +16,13 @@ from MyNeuralNetwork import *
 from dynamic_system_instances import car1, inverted_pendulum_1
 from DataModule import DataModule
 
+
+############### create folder #################
+
+if not os.path.exists("test_fig"):
+      os.makedirs("test_fig")
+
+
 ##################### draw loss curve #######################
 
 test_results = torch.load("test_results.pt")
@@ -24,7 +32,7 @@ data_module = DataModule(system=inverted_pendulum_1, val_split=0, train_batch_si
 data_module.prepare_data()
 
 s_training = data_module.s_training
-s_training = torch.load("s_training.pt")
+# s_training = torch.load("s_training.pt")
 
 ######################## extract test results ###########################
 

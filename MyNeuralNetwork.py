@@ -68,7 +68,7 @@ class NeuralNetwork(pl.LightningModule):
         self.data_module = data_module
         self.learn_shape_epochs = learn_shape_epochs
         if fine_tune:
-            self.learning_rate = 1e-4
+            self.learning_rate = 1e-5
         else:
             self.learning_rate = primal_learning_rate
         self.dt = self.dynamic_system.dt
@@ -78,11 +78,11 @@ class NeuralNetwork(pl.LightningModule):
         self.require_grad_descent_loss = require_grad_descent_loss
         self.h = nn.Sequential(
                 nn.Linear(2, 256),
-                nn.ReLU(),
+                nn.Tanh(),
                 nn.Linear(256, 256),
-                nn.ReLU(),
+                nn.Tanh(),
                 nn.Linear(256, 256),
-                nn.ReLU(),
+                nn.Tanh(),
                 nn.Linear(256,1)
             )
         
@@ -115,7 +115,7 @@ class NeuralNetwork(pl.LightningModule):
                                        "violation_states": [], "violation_value": []}
     
         self.descent_loss_name = ['descent_term_linearized', 'descent_term_simulated', 'hji_vi_descent_loss_term']
-        self.safety_loss_name = ['unsafe_region_term','unsafe_area_hji_term']
+        self.safety_loss_name = ['unsafe_region_term','unsafe_area_hji_term', 'regulation_loss_term']
         self.performance_lose_name = ['safe_region_term', 'descent_boundary_term', 'hji_vi_boundary_loss_term']
 
         self.coefficient_for_performance_loss = 1
@@ -342,43 +342,44 @@ class NeuralNetwork(pl.LightningModule):
         loss = []
         
         # 1.) h > 0 in the safe region
-        if not self.use_h0:
-            ls = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values
-            temp =  torch.max(ls)
-            self.max_value_function = torch.maximum(temp, self.max_value_function.to(s.device))
+        # if not self.use_h0:
+        #     ls = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values
+        #     temp =  torch.max(ls)
+        #     self.max_value_function = torch.maximum(temp, self.max_value_function.to(s.device))
             
-            baseline = ls
-            nominal_safe_mask =  ( baseline > self.max_value_function*0.9)
-            baseline = torch.ones_like(ls)
+        #     baseline = ls
+        #     nominal_safe_mask =  ( baseline > self.max_value_function*0.5)
+        #     baseline = torch.ones_like(ls)
            
-        else:
-            if not self.fine_tune:
-                Lf_V, Lg_V = self.V_lie_derivatives(s, gradh)
+        # else:
+        #     if not self.fine_tune:
+        #         Lf_V, Lg_V = self.V_lie_derivatives(s, gradh)
 
-                u_min, u_max = self.dynamic_system.control_limits
+        #         u_min, u_max = self.dynamic_system.control_limits
                 
-                u_qp = (Lg_V >= 0)*u_max.to(s.device) + (Lg_V < 0)*u_min.to(s.device)
+        #         u_qp = (Lg_V >= 0)*u_max.to(s.device) + (Lg_V < 0)*u_min.to(s.device)
 
-                # Use the dynamics to compute the derivative of V
-                Vdot = Lf_V[:, :].unsqueeze(1) + torch.bmm(
-                    Lg_V[:, :].unsqueeze(1),
-                    u_qp.reshape(-1, self.dynamic_system.nu, 1),
-                )
-                Vdot = Vdot.reshape(hs.shape) 
+        #         # Use the dynamics to compute the derivative of V
+        #         Vdot = Lf_V[:, :].unsqueeze(1) + torch.bmm(
+        #             Lg_V[:, :].unsqueeze(1),
+        #             u_qp.reshape(-1, self.dynamic_system.nu, 1),
+        #         )
+        #         Vdot = Vdot.reshape(hs.shape) 
 
-                ls = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values
+        #         ls = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values
             
-                baseline = self.h0(s) * self.expand_factor # + torch.clip( torch.minimum(1 * Vdot - 1 , 1*ls)  , min=-0.3, max=0.1)
-                nominal_safe_mask = (baseline > 0)
-            if self.fine_tune:
-                baseline = self.h0(s) * 0.9 - 0.1
-                nominal_safe_mask = (baseline > 0)
+        #         baseline = self.h0(s) * self.expand_factor # + torch.clip( torch.minimum(1 * Vdot - 1 , 1*ls)  , min=-0.3, max=0.1)
+        #         nominal_safe_mask = (baseline > 0)
+        #     if self.fine_tune:
+        #         baseline = self.h0(s) * 0.9 - 0.1
+        #         nominal_safe_mask = (baseline > 0)
 
-        baseline = baseline.detach()
+        baseline = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values.detach() - 0.3
 
-        hs_safe = hs[nominal_safe_mask]
-        
-        safe_violation = coefficient_for_performance_state_loss * F.relu( baseline[nominal_safe_mask]- hs_safe )
+        hs_safe = hs[torch.logical_not(unsafe_mask)]
+        safe_mask = torch.logical_not(unsafe_mask)
+
+        safe_violation = coefficient_for_performance_state_loss * torch.relu(  baseline[safe_mask] - hs_safe )
         safe_hs_term =  safe_violation.mean()
         if not torch.isnan(safe_hs_term):
             loss.append(("safe_region_term", safe_hs_term))
@@ -391,9 +392,9 @@ class NeuralNetwork(pl.LightningModule):
        
 
         hs_unsafe = hs[unsafe_mask]
-        baseline = -torch.min(self.dynamic_system.state_constraints(s[unsafe_mask]), dim=1, keepdim=True).values
-        baseline = torch.ones_like(baseline)
-        unsafe_violation = coefficient_for_unsafe_state_loss *  F.relu( baseline + 0.2 + hs_unsafe)
+        
+        # baseline = torch.ones_like(baseline)
+        unsafe_violation = coefficient_for_unsafe_state_loss *  F.relu( - baseline[unsafe_mask] + hs_unsafe)
         
         unsafe_hs_term = unsafe_violation.mean() 
         if not torch.isnan(unsafe_hs_term):
@@ -694,10 +695,10 @@ class NeuralNetwork(pl.LightningModule):
 
 
         # 1.) h > 0 in the safe region
-        hs_safe = hs
-        eps = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values
         
-        value_fun_violation = (eps - 0.3 -  hs_safe) * 1
+        baseline = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values - 0.3
+        
+        value_fun_violation = (baseline -  hs) * 1
         
 
         # condition_active = torch.sigmoid(10 * (1.0 + eps - H))
@@ -714,10 +715,31 @@ class NeuralNetwork(pl.LightningModule):
         ############### Now compute the decrease using linearization #######################
         # eps = 0
         
+
+        # Lf_V_avg_list = []
+        # Lg_V_avg_list = []
+        # gradh_avg_list = []
+
+        # num_of_average_points = 20
+        # for i in range(num_of_average_points):
+        #     s_avg = s + torch.rand(s.shape).to(s.device) * 0.2 - 0.1
+        #     hs_avg = self.h(s_avg)
+        #     gradh_avg = self.jacobian(hs_avg, s_avg)
+        #     gradh_avg_list.append(gradh_avg)
+        #     # Lf_V_avg, Lg_V_avg = self.V_lie_derivatives(s_avg, gradh_avg)
+        #     # Lf_V_avg_list.append(Lf_V_avg)
+        #     # Lg_V_avg_list.append(Lg_V_avg)
+        
+        # gradh_avg_all = torch.mean( torch.stack(gradh_avg_list), dim=0 ).detach()
+        # gradh = 0.5 * gradh + 0.5 * gradh_avg_all
+        # Lf_V_avg_all = torch.mean( torch.stack(Lf_V_avg_list), dim=0 ).detach()
+        # Lg_V_avg_all = torch.mean( torch.stack(Lg_V_avg_list), dim=0 ).detach()
+
+        # Lf_V = 0.5 * Lf_V + 0.5 * Lf_V_avg_all
+        # Lg_V = 0.5 * Lg_V + 0.5 * Lg_V_avg_all
+
         # Get the current value of the CLBF and its Lie derivatives
         Lf_V, Lg_V, = self.V_lie_derivatives(s, gradh)
-
-        # print(Lg_V[0:4])
 
         u_min, u_max = self.dynamic_system.control_limits
         
@@ -761,9 +783,14 @@ class NeuralNetwork(pl.LightningModule):
         loss.append(("hji_vi_descent_loss_term", hji_vi_loss_term))
         
 
-        unsafe_area_violation = hs[unsafe_mask]
-        unsafe_area_violation_term = coefficients_hji_inadmissible_loss * F.relu(unsafe_area_violation).mean()
-        loss.append(("unsafe_area_hji_term", unsafe_area_violation_term))
+        # unsafe_area_violation = hs[unsafe_mask]
+        # unsafe_area_violation_term = coefficients_hji_inadmissible_loss * F.relu(unsafe_area_violation).mean()
+        # loss.append(("unsafe_area_hji_term", unsafe_area_violation_term))
+        
+    
+        regulation_loss = 10 * F.relu( hs - ( baseline  -  0.1) ) * torch.sigmoid(- 10 * baseline) 
+        regulation_loss_term = regulation_loss[torch.logical_not(unsafe_mask)].mean()
+        # loss.append(("regulation_loss_term", regulation_loss_term))
 
         return loss
 
@@ -1654,8 +1681,7 @@ class NeuralNetwork(pl.LightningModule):
         # Extract the input and masks from the batch
         s, safe_mask, unsafe_mask, grid_gap = batch
         s.requires_grad_(True)
-        hs = self.h(s)
-        gradh = self.jacobian(hs, s)
+        
 
         
 
@@ -1663,7 +1689,9 @@ class NeuralNetwork(pl.LightningModule):
         component_losses = {}
        
         s_random = s + torch.mul(grid_gap , torch.rand(s.shape[0], self.dynamic_system.ns, requires_grad=True).to(s.device)) - grid_gap/2
-
+        
+        hs = self.h(s_random)
+        gradh = self.jacobian(hs, s_random)
 
 
         if not self.fine_tune:
@@ -1866,7 +1894,8 @@ class NeuralNetwork(pl.LightningModule):
             if self.training_stage == 1 and (safety_losses < 1e-3 and descent_losses < 1e-2 ):
                 self.trainer.should_stop = True
         
-            if self.training_stage == 0 and (performance_losses < 20 and safety_losses < 20): # warm up, shape h and g
+            if self.training_stage == 0 and (performance_losses < 15 and safety_losses < 15): # warm up, shape h and g
+                
                 self.training_stage = 1  # start to consider condition 3
                 self.epoch_record = self.current_epoch
                 # self.coefficient_for_performance_state_loss = 0
@@ -1992,6 +2021,7 @@ class NeuralNetwork(pl.LightningModule):
             # record shape_h
             h_x = self.h(x)
             gradh = self.jacobian(h_x, x)
+            gradh = gradh.detach()
             
             batch_dict["shape_h"]["state"] = x
             batch_dict["shape_h"]["val"] = h_x
