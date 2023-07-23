@@ -52,8 +52,8 @@ class InvertedPendulum(ControlAffineSystem):
         B = np.array([0, 1/(self.m * self.L **2)]).reshape((self.ns, self.nu))
         Q = np.eye(self.ns)
         R = np.eye(self.nu)
-        # K, _, _ = control.lqr(A, B, Q, R)
-        # self.K_lqr = torch.from_numpy(K).float()
+        K, _, _ = control.lqr(A, B, Q, R)
+        self.K_lqr = torch.from_numpy(K).float()
 
     def f(self, s: torch.Tensor) -> torch.Tensor:
         batch_size = s.shape[0]
@@ -66,10 +66,9 @@ class InvertedPendulum(ControlAffineSystem):
 
         # The derivatives of theta is just its velocity
         f[:, InvertedPendulum.THETA, 0] = theta_dot
-
         # Acceleration in theta depends on theta via gravity and theta_dot via damping
         f[:, InvertedPendulum.THETA_DOT, 0] = (
-            9.81 / self.L * torch.sin(theta) - self.b / (self.m * self.L ** 2) * theta_dot
+            (self.gravity * 3 * torch.sin(theta) ) / (2 * self.L) - self.b / (self.m * self.L ** 2 / 3) * theta_dot
         )
 
         return f.squeeze(dim=-1)
@@ -93,7 +92,7 @@ class InvertedPendulum(ControlAffineSystem):
 
 
         # Effect on theta dot
-        g[:, InvertedPendulum.THETA_DOT, InvertedPendulum.U] = 1 / (self.m * self.L ** 2)
+        g[:, InvertedPendulum.THETA_DOT, InvertedPendulum.U] = 1 / (self.m * self.L ** 2 / 3)
 
         return g
 
