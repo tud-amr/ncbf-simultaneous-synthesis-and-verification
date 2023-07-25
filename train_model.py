@@ -29,7 +29,7 @@ print('Using {} device'.format(device))
 
 data_module = DataModule(system=inverted_pendulum_1, val_split=0, train_batch_size=128, test_batch_size=1024, train_grid_gap=0.025, test_grid_gap=0.01)
 
-default_root_dir = "./CBF_logs/robust_training_maximum_with_value_function"
+default_root_dir = "./CBF_logs/robust_training_maximum_with_value_function_3"
 
 # checkpoint_callback = ModelCheckpoint(dirpath=default_root_dir, save_top_k=1, monitor="Total_loss/train")
 
@@ -37,9 +37,10 @@ if not fine_tune:
 
 
     # NN = NeuralNetwork(dynamic_system=inverted_pendulum_1, data_module=data_module, require_grad_descent_loss=True)
-    NN = NeuralNetwork.load_from_checkpoint("CBF_logs/robust_training_maximum/lightning_logs/version_0/checkpoints/epoch=77-step=3354.ckpt",dynamic_system=inverted_pendulum_1, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
-    
+    NN = NeuralNetwork.load_from_checkpoint("CBF_logs/robust_training_maximum_with_value_function_3/lightning_logs/version_0/checkpoints/epoch=88-step=3827.ckpt",dynamic_system=inverted_pendulum_1, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
+   
     NN.training_stage = 1
+    NN.set_previous_cbf(NN.h)
 
     trainer = pl.Trainer(
         accelerator = "gpu",

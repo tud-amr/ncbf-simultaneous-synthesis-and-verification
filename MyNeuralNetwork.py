@@ -102,7 +102,7 @@ class NeuralNetwork(pl.LightningModule):
         self.h0 = copy.deepcopy(self.h)
         
         u_lower, u_upper = self.dynamic_system.control_limits
-        self.u_v =[u_lower.item(), u_upper.item()]
+        self.u_v = torch.tensor([u_lower.item(), u_upper.item()])
         
         # self.K = self.dynamic_system.K
         self.clf_lambda = clf_lambda
@@ -163,9 +163,9 @@ class NeuralNetwork(pl.LightningModule):
         return self.data_module.test_dataloader()
 
     def set_previous_cbf(self, h):
-        # self.h0.load_state_dict(h.state_dict())
-        # self.use_h0 = True
-        pass
+        self.h0.load_state_dict(h.state_dict())
+        self.use_h0 = True
+        
 
     def set_expand_factor(self, factor):
         self.expand_factor = factor
@@ -693,43 +693,31 @@ class NeuralNetwork(pl.LightningModule):
         # qp_relaxation_loss = qp_relaxation[torch.logical_not(unsafe_mask)].mean()
         # loss.append(("QP_relaxation", qp_relaxation_loss))
 
-        ############### Now compute the decrease using linearization #######################
-        # eps = 0
-        
-
-        # Lf_V_avg_list = []
-        # Lg_V_avg_list = []
-        # gradh_avg_list = []
-
-        # num_of_average_points = 20
-        # for i in range(num_of_average_points):
-        #     s_avg = s + torch.rand(s.shape).to(s.device) * 0.2 - 0.1
-        #     hs_avg = self.h(s_avg)
-        #     gradh_avg = self.jacobian(hs_avg, s_avg)
-        #     gradh_avg_list.append(gradh_avg)
-        #     # Lf_V_avg, Lg_V_avg = self.V_lie_derivatives(s_avg, gradh_avg)
-        #     # Lf_V_avg_list.append(Lf_V_avg)
-        #     # Lg_V_avg_list.append(Lg_V_avg)
-        
-        # gradh_avg_all = torch.mean( torch.stack(gradh_avg_list), dim=0 ).detach()
-        # gradh = 0.5 * gradh + 0.5 * gradh_avg_all
-        # Lf_V_avg_all = torch.mean( torch.stack(Lf_V_avg_list), dim=0 ).detach()
-        # Lg_V_avg_all = torch.mean( torch.stack(Lg_V_avg_list), dim=0 ).detach()
-
-        # Lf_V = 0.5 * Lf_V + 0.5 * Lf_V_avg_all
-        # Lg_V = 0.5 * Lg_V + 0.5 * Lg_V_avg_all
-
         # Get the current value of the CLBF and its Lie derivatives
         Lf_V, Lg_V, = self.V_lie_derivatives(s, gradh)
 
-        u_min, u_max = self.dynamic_system.control_limits
-        
-        # u_nominal = self.nominal_controller(s)
-        # u_qp = torch.clip( u_nominal * 1000, min= u_min.to(s.device), max=u_max.to(s.device)).to(s.device)
-        
+        if self.use_h0:
+            hs_next_list = []
+            for u in self.u_v:
+                x_next = self.dynamic_system.step(s, torch.ones(s.shape[0], self.dynamic_system.nu).to(s.device)*u)
+                hs_next = self.h0(x_next)
+                hs_next_list.append(hs_next)
 
-        # u_qp = torch.ones(s.shape[0], self.dynamic_system.nu).to(s.device) * u_max.to(s.device) 
-        u_qp = (Lg_V >= 0)*u_max.to(s.device) + (Lg_V < 0)*u_min.to(s.device)
+            hs_next = torch.stack(hs_next_list, dim=1)
+            hs_next, index_control = torch.max(hs_next, dim=1, keepdim=True)
+
+            index_control = index_control.squeeze()
+            u_qp = self.u_v[index_control]
+            u_qp = u_qp.to(s.device)
+        else:
+            u_min, u_max = self.dynamic_system.control_limits
+        
+            # u_nominal = self.nominal_controller(s)
+            # u_qp = torch.clip( u_nominal * 1000, min= u_min.to(s.device), max=u_max.to(s.device)).to(s.device)
+            
+
+            # u_qp = torch.ones(s.shape[0], self.dynamic_system.nu).to(s.device) * u_max.to(s.device) 
+            u_qp = (Lg_V >= 0)*u_max.to(s.device) + (Lg_V < 0)*u_min.to(s.device)
         
         # Use the dynamics to compute the derivative of V
         Vdot =  Lf_V[:, :].unsqueeze(1) + \
@@ -1908,7 +1896,7 @@ class NeuralNetwork(pl.LightningModule):
                 pass
                 # self.trainer.should_stop = True
         
-            if self.training_stage == 0 and (performance_losses < 10 and safety_losses < 10): # warm up, shape h and g
+            if self.training_stage == 0 and (performance_losses < 5 and safety_losses < 5): # warm up, shape h and g
                 self.trainer.should_stop = True
                 self.training_stage = 1  # start to consider condition 3
                 self.epoch_record = self.current_epoch
