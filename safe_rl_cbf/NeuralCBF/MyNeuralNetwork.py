@@ -29,12 +29,12 @@ from matplotlib import cm
 from matplotlib.ticker import LinearLocator
 import matplotlib.pyplot as plt
 
-from DataModule import DataModule
+from safe_rl_cbf.Dataset.DataModule import DataModule
 # from ValueFunctionNeuralNetwork import ValueFunctionNeuralNetwork
-from control_affine_system import ControlAffineSystem
-from Transformer import Transformer
+from safe_rl_cbf.Dynamics.control_affine_system import ControlAffineSystem
+from safe_rl_cbf.NeuralCBF.Transformer import Transformer
 
-from dynamic_system_instances import car1, inverted_pendulum_1
+from safe_rl_cbf.Dynamics.dynamic_system_instances import car1, inverted_pendulum_1
 
 ######################### define neural network #########################
 

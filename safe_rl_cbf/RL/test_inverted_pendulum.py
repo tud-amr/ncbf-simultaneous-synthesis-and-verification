@@ -1,12 +1,12 @@
 import numpy as np
 import torch
-from MyPendulum import MyPendulumEnv
+from safe_rl_cbf.RL.MyPendulum import MyPendulumEnv
 from stable_baselines3 import PPO
 
 
-from MyNeuralNetwork import NeuralNetwork
-from dynamic_system_instances import inverted_pendulum_1
-from DataModule import DataModule
+from safe_rl_cbf.NeuralCBF.MyNeuralNetwork import NeuralNetwork
+from safe_rl_cbf.Dynamics.dynamic_system_instances import inverted_pendulum_1
+from safe_rl_cbf.Dataset.DataModule import DataModule
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using {device} device")

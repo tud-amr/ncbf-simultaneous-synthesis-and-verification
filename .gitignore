@@ -8,3 +8,6 @@ backup
 RA_result
 *.pt
 .vscode 
+logs
+*.zip
+*.egg-info

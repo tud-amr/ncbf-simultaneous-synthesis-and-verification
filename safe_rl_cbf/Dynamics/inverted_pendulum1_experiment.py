@@ -1,22 +1,27 @@
 
-from MyNeuralNetwork import *
-from Car import Car
-from DataModule import DataModule
-from dynamic_system_instances import car1
+from safe_rl_cbf.NeuralCBF.MyNeuralNetwork import *
+from safe_rl_cbf.Dataset.DataModule import DataModule
+from safe_rl_cbf.Dynamics.dynamic_system_instances import inverted_pendulum_1
 import torch
-
+import lightning.pytorch as pl
 import matplotlib.pyplot as plt 
 
 
-NN = torch.load("NN.pt")
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"Using {device} device")
 
-car1.set_barrier_function(NN)
-car1.dt = 0.01
 
-s0 = torch.tensor([0.5, -0.3], dtype=torch.float).reshape((1,2))
+data_module = DataModule(system=inverted_pendulum_1, val_split=0.1, train_batch_size=64, test_batch_size=128, train_grid_gap=0.1, test_grid_gap=0.01)
+
+NN = NeuralNetwork.load_from_checkpoint("masterthesis_test/CBF_logs/run2/lightning_logs/version_0/checkpoints/epoch=39-step=2840.ckpt", dynamic_system=inverted_pendulum_1, data_module=data_module, learn_shape_epochs=2 )
+
+
+inverted_pendulum_1.set_barrier_function(NN)
+
+s0 = torch.tensor([-0.1, -0.5], dtype=torch.float).reshape((1,2))
 
 t = 0
-dt = car1.dt
+dt = inverted_pendulum_1.dt
 t_record = []
 s_record = []
 u_record = []
@@ -37,12 +42,12 @@ try:
         h_record.append(hs.item())
 
         # u_ref = torch.rand(1,1, dtype=torch.float)*4 - torch.tensor([2], dtype=torch.float).reshape((1,1))
-        u_ref = torch.tensor([2], dtype=torch.float).reshape((1,1))
-        u_result, r_result = car1.h.solve_CLF_QP(s, u_ref, epsilon=1)
+        u_ref = torch.tensor([-1], dtype=torch.float).reshape((1,1))
+        u_result, r_result = inverted_pendulum_1.h.solve_CLF_QP(s, u_ref, epsilon=0.1)
         assert not(r_result > 0.0), f"not feasible!!!!!!"
         # if u_result == 1.0:
-        #     car1.solve_CLF_QP(s, u_ref)
-        s_next = car1.step(s, u_result)
+        #     inverted_pendulum_1.solve_CLF_QP(s, u_ref)
+        s_next = inverted_pendulum_1.step(s, u_result)
 
         t = t + dt
         s = s_next

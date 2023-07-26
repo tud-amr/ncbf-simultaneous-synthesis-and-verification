@@ -4,9 +4,9 @@ import torch
 from torch import nn
 from torch.autograd.functional import jacobian
 
-from MyNeuralNetwork import *
+from NeuralCBF.MyNeuralNetwork import *
 from CARs import car1
-from DataModule import DataModule
+from Dataset.DataModule import DataModule
 
 
 device = "cuda" if torch.cuda.is_available() else "cpu"

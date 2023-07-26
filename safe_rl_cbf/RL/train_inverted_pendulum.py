@@ -3,8 +3,8 @@ from os import path
 
 import torch
 import gymnasium as gym
-from MyPendulum import MyPendulumEnv
-from inverted_pendulum_callback import CustomCallback
+from safe_rl_cbf.RL.MyPendulum import MyPendulumEnv
+from safe_rl_cbf.RL.inverted_pendulum_callback import CustomCallback
 
 # import stable_baseline3
 from stable_baselines3 import PPO
@@ -14,9 +14,9 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.results_plotter import load_results, ts2xy
 
 # import CBF
-from MyNeuralNetwork import NeuralNetwork
-from dynamic_system_instances import inverted_pendulum_1
-from DataModule import DataModule
+from safe_rl_cbf.NeuralCBF.MyNeuralNetwork import NeuralNetwork
+from safe_rl_cbf.Dynamics.dynamic_system_instances import inverted_pendulum_1
+from safe_rl_cbf.Dataset.DataModule import DataModule
 
 
 device = "cuda" if torch.cuda.is_available() else "cpu"

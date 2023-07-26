@@ -7,7 +7,7 @@ import lightning.pytorch as pl
 
 import numpy as np
 
-from control_affine_system import ControlAffineSystem
+from safe_rl_cbf.Dynamics.control_affine_system import ControlAffineSystem
 
 class Car(ControlAffineSystem):
     def __init__(self, ns=2, nu=1, dt=0.01):

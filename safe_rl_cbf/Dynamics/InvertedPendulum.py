@@ -8,7 +8,7 @@ import lightning.pytorch as pl
 import numpy as np
 import control
 
-from control_affine_system import ControlAffineSystem
+from safe_rl_cbf.Dynamics.control_affine_system import ControlAffineSystem
 
 class InvertedPendulum(ControlAffineSystem):
     """

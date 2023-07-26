@@ -1,5 +1,5 @@
-from Car import Car
-from InvertedPendulum import InvertedPendulum
+from safe_rl_cbf.Dynamics.Car import Car
+from safe_rl_cbf.Dynamics.InvertedPendulum import InvertedPendulum
 import torch
 
 ####################### create an one-D car object ######################

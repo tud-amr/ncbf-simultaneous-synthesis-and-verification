@@ -26,10 +26,10 @@ from matplotlib import cm
 from matplotlib.ticker import LinearLocator
 import matplotlib.pyplot as plt
 
-from DataModule import DataModule
-from control_affine_system import ControlAffineSystem
+from Dataset.DataModule import DataModule
+from Dynamics.control_affine_system import ControlAffineSystem
 
-from dynamic_system_instances import car1, inverted_pendulum_1
+from Dynamics.dynamic_system_instances import car1, inverted_pendulum_1
 
 ######################### define neural network #########################
 
