@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from safe_rl_cbf.RL.InvertedPendulum.MyPendulum import MyPendulumEnv
+from safe_rl_cbf.RL.CartPole.MyCartPole import CartPoleEnv
 from stable_baselines3 import PPO
 
 
@@ -13,19 +13,22 @@ print(f"Using {device} device")
 
 data_module = DataModule(system=inverted_pendulum_1, val_split=0.1, train_batch_size=64, test_batch_size=128, train_grid_gap=0.1, test_grid_gap=0.01)
 
-NN = NeuralNetwork.load_from_checkpoint("saved_models/inverted_pendulum_umax_12/checkpoints/epoch=74-step=3225.ckpt", dynamic_system=inverted_pendulum_1, data_module=data_module, learn_shape_epochs=2 )
-NN = NN.to(device)
+# NN = NeuralNetwork.load_from_checkpoint("saved_models/inverted_pendulum_umax_12/checkpoints/epoch=74-step=3225.ckpt", dynamic_system=inverted_pendulum_1, data_module=data_module, learn_shape_epochs=2 )
+# NN = NN.to(device)
 
 
-env = MyPendulumEnv("human", g=9.81, with_CBF=True)
-env.set_barrier_function(NN)
-model = PPO.load("logs/stable_baseline_logs/run0/ip_with_CBF.zip")
+env = CartPoleEnv("human")
+# env.set_barrier_function(NN)
+model = PPO.load("logs/stable_baseline_logs/cartpole/run0/cartpole_without_CBF")
 
 obs = env.reset()
+print(f"obs: {obs}")
 while True:
     action, _states = model.predict(obs)
+    action[0] = 0
     obs, rewards, dones, info = env.step(action)
+    print(f"obs: {obs}")
     env.render()
-    # if  dones is True or np.linalg.norm(env.state) < 0.2:     
-    #     obs = env.reset()
+    if  dones is True:     
+        obs = env.reset()
     

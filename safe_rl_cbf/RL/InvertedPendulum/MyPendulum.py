@@ -78,10 +78,10 @@ class MyPendulumEnv(gym.Env):
         self.break_safety = 0
         self.prefix = "with_CBF_" if self.with_CBF else "without_CBF_"
         self.max_speed = 8
-        self.max_torque = 2.0
+        self.max_torque = 12.0
         self.dt = 0.05
         self.g = g
-        self.m = 0.1
+        self.m = 0.8
         self.l = 1.0
 
         self.render_mode = render_mode
@@ -114,31 +114,36 @@ class MyPendulumEnv(gym.Env):
         m = self.m
         l = self.l
         dt = self.dt
-
+        costs = 0.0
         if self.with_CBF:
             if self.h is None:
                 raise Exception(f"Please use self.set_barrier_function to set barrier function")
             
             device = self.h.device
             s = torch.from_numpy(self.state).float().reshape((-1,2)).to(device)
+            
             hs = self.h(s)
+            gradh = self.h.jacobian(hs, s)
             # if hs < 0:
             #     raise Exception(f"Current state [{self.state[0]}, {self.state[1]}] is unsafe, h(s)={hs}")
             
             u_ref = torch.from_numpy(u).float().reshape((-1,1)).to(device)            
-            u_result, r_result = self.h.solve_CLF_QP(s, u_ref, epsilon=0.1)
+            u_result, r_result = self.h.solve_CLF_QP(s, gradh, u_ref, epsilon=0.05)
 
             if r_result > 0.0:
                 self.break_safety += 1
             #     raise Exception(f"The QP is infeasible, slack variable is {r_result}")
 
+            if abs(u_result - u_ref) > 0.1:
+                costs += 15
+
             u = u_result.cpu().numpy().squeeze(-1)
 
         u = np.clip(u, -self.max_torque, self.max_torque)[0]
         self.last_u = u  # for rendering
-        costs = angle_normalize(th) ** 2 + 0.1 * thdot**2 + 0.001 * (u**2)
+        costs += angle_normalize(th) ** 2 + 0.1 * thdot**2 + 0.001 * ((u/6)**2)
 
-        newthdot = thdot + (1 * g / (1 * l) * np.sin(th) + 1 / (m * l**2) * u) * dt
+        newthdot = thdot + (3 * g / (2 * l) * np.sin(th) + 1 / (m * l**2 / 3) * u) * dt
         newthdot = np.clip(newthdot, -self.max_speed, self.max_speed)
         newth = th + newthdot * dt
 
@@ -147,7 +152,7 @@ class MyPendulumEnv(gym.Env):
         is_unsafe = self.h.dynamic_system.unsafe_mask(torch.from_numpy(self.state).float().reshape((-1, 2)).to(self.h.device))
         if is_unsafe[0]:
             self.done = True
-            cost = 15
+            costs += 15
             self.break_safety += 1
         else:
             self.done = False
@@ -162,7 +167,7 @@ class MyPendulumEnv(gym.Env):
         end_time = time.time()
         self.step_executing_time = end_time - start_time
 
-        return (self._get_obs(), -costs, self.done, {"username": "wangxinyu"})
+        return self._get_obs(), -costs, False, {"username": "wangxinyu"}
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         # super().reset(seed=seed)
@@ -268,7 +273,8 @@ class MyPendulumEnv(gym.Env):
             self.surf, rod_end[0], rod_end[1], int(rod_width / 2), (204, 77, 77)
         )
 
-        fname = path.join(path.dirname(__file__), "assets/clockwise.png")
+        # fname = path.join(path.dirname(__file__), "assets/clockwise.png")
+        fname = "assets/clockwise.png"
         img = pygame.image.load(fname)
         if self.last_u is not None:
             scale_img = pygame.transform.smoothscale(

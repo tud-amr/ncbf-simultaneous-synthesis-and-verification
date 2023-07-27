@@ -175,21 +175,42 @@ class NeuralNetwork(pl.LightningModule):
 
         return hs
 
-    @staticmethod
-    def jacobian(y, x):
+    def jacobian(self, y, x):
         ''' jacobian of y wrt x '''
-        meta_batch_size, num_observations = y.shape[:2]
-        jac = torch.zeros(meta_batch_size, y.shape[-1], x.shape[-1]).to(y.device) # (meta_batch_size*num_points, 2, 2)
-        for i in range(y.shape[-1]):
-            # calculate dydx over batches for each feature value of y
-            y_flat = y[...,i].view(-1, 1)
-            jac[:, i, :] = grad(y_flat, x, torch.ones_like(y_flat), create_graph=True)[0]
+        # meta_batch_size, num_observations = y.shape[:2]
+        # jac = torch.zeros(meta_batch_size, y.shape[-1], x.shape[-1]).to(y.device) # (meta_batch_size*num_points, 2, 2)
+        # for i in range(y.shape[-1]):
+        #     # calculate dydx over batches for each feature value of y
+        #     y_flat = y[...,i].view(-1, 1)
+        #     jac[:, i, :] = grad(y_flat, x, torch.ones_like(y_flat), create_graph=True)[0]
 
-        status = 0
-        if torch.any(torch.isnan(jac)):
-            status = -1
+        # status = 0
+        # if torch.any(torch.isnan(jac)):
+        #     status = -1
+        x_norm = x 
 
-        return jac
+        bs = x_norm.shape[0]
+        JV = torch.zeros(
+            (bs, self.dynamic_system.ns, self.dynamic_system.ns)
+        ).type_as(x)
+        # and for each non-angle dimension, we need to scale by the normalization
+        for dim in range(self.dynamic_system.ns):
+            JV[:, dim, dim] = 1.0
+
+        # Now step through each layer in V
+        V = x_norm
+        for layer in self.h:
+            V = layer(V)
+
+            if isinstance(layer, nn.Linear):
+                JV = torch.matmul(layer.weight, JV)
+            elif isinstance(layer, nn.Tanh):
+                JV = torch.matmul(torch.diag_embed(1 - V ** 2), JV)
+            elif isinstance(layer, nn.ReLU):
+                JV = torch.matmul(torch.diag_embed(torch.sign(V)), JV)
+
+       
+        return JV
     
     def get_max_grad_with_params(self, loss):
 
