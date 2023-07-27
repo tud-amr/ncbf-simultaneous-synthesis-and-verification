@@ -27,7 +27,7 @@ fine_tune = False
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print('Using {} device'.format(device))
 
-data_module = DataModule(system=cart_pole_1, val_split=0, train_batch_size=128, test_batch_size=1024, train_grid_gap=1, test_grid_gap=1)
+data_module = DataModule(system=cart_pole_1, val_split=0, train_batch_size=128, test_batch_size=1024, training_sample_num=1e6, test_grid_gap=1)
 
 default_root_dir = "./logs/CBF_logs/cart_pole"
 

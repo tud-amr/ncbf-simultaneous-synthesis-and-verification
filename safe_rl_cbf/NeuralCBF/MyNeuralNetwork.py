@@ -1709,7 +1709,7 @@ class NeuralNetwork(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         """Conduct the training step for the given batch"""
         # Extract the input and masks from the batch
-        s, safe_mask, unsafe_mask, grid_gap = batch
+        s, safe_mask, unsafe_mask = batch
         s.requires_grad_(True)
         
         # s = torch.Tensor([1.23, 0.1]).to(s.device).reshape(-1,2)
@@ -1719,7 +1719,7 @@ class NeuralNetwork(pl.LightningModule):
         # Compute the losses
         component_losses = {}
        
-        s_random = s + torch.mul(grid_gap , torch.rand(s.shape[0], self.dynamic_system.ns, requires_grad=True).to(s.device)) - grid_gap/2
+        s_random = s # + torch.mul(grid_gap , torch.rand(s.shape[0], self.dynamic_system.ns, requires_grad=True).to(s.device)) - grid_gap/2
         
         hs = self.h(s_random)
         gradh = self.jacobian(hs, s_random)
@@ -2043,72 +2043,60 @@ class NeuralNetwork(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         """Conduct the validation step for the given batch"""
         # Extract the input and masks from the batch
-        with torch.set_grad_enabled(True):
-            x, safe_mask, unsafe_mask, _ = batch
-            
-            # Get the various losses
-            batch_dict = {"shape_h": {}, "shape_g": {},"safe_violation": {}, "unsafe_violation": {}, "descent_violation": {}, "safe_boundary":{} }
-            x.requires_grad_(True)
-            
-            # record shape_h
-            h_x = self.h(x)
-            gradh = self.jacobian(h_x, x)
-            gradh = gradh.detach()
-            
-            batch_dict["shape_h"]["state"] = x
-            batch_dict["shape_h"]["val"] = h_x
+    
+        x, safe_mask, unsafe_mask = batch
+        
+        # Get the various losses
+        batch_dict = {"shape_h": {}, "unsafe_violation": {}, "descent_violation": {}, "inadmissible_boundary":{} }
+        x.requires_grad_(True)
+        
+        # record shape_h
+        h_x = self.h(x)
+        gradh = self.jacobian(h_x, x)
+        
+        
+        batch_dict["shape_h"]["state"] = x
+        batch_dict["shape_h"]["val"] = h_x
 
-            # record safe_violation
+        # record unsafe_violation
+        h_x_neg_mask = h_x < 0
+        h_x_pos_mask = h_x > 0
+        unit_index = torch.hstack((unsafe_mask.unsqueeze(dim=1), h_x_pos_mask))
 
-            h_x_neg_mask = h_x < 0 
-            unit_index= torch.hstack((safe_mask.unsqueeze(dim=1), h_x_neg_mask))
+        h_x_unsafe_violation_indx = torch.all(unit_index, dim=1)
+        ##  record states and its value
+        s_unsafe_violation = x[h_x_unsafe_violation_indx]
+        h_s_unsafe_violation = h_x[h_x_unsafe_violation_indx]
 
-            h_x_safe_violation_indx = torch.all(unit_index, dim=1)
-            ## record states and its value
-            s_safe_violation = x[h_x_safe_violation_indx]
-            h_s_safe_violation = h_x[h_x_safe_violation_indx]
+        batch_dict["unsafe_violation"]["state"] = s_unsafe_violation
+        batch_dict["unsafe_violation"]["val"] = h_s_unsafe_violation
 
-            batch_dict["safe_violation"]["state"] = s_safe_violation
-            batch_dict["safe_violation"]["val"] = h_s_safe_violation
+        # record descent_violation
+        c_list = [ self.gradient_descent_violation(x, u_i) for u_i in self.u_v ]
+        c_list = torch.hstack(c_list)
 
-            # record unsafe_violation
-            h_x_pos_mask = h_x > 0
-            unit_index = torch.hstack((unsafe_mask.unsqueeze(dim=1), h_x_pos_mask))
+        descent_violation, u_star_index = torch.max(c_list, dim=1)
 
-            h_x_unsafe_violation_indx = torch.all(unit_index, dim=1)
-            ##  record states and its value
-            s_unsafe_violation = x[h_x_unsafe_violation_indx]
-            h_s_unsafe_violation = h_x[h_x_unsafe_violation_indx]
+        descent_violation_mask = torch.logical_and(descent_violation < 0, torch.logical_not(h_x_neg_mask.squeeze(dim=-1)))  
 
-            batch_dict["unsafe_violation"]["state"] = s_unsafe_violation
-            batch_dict["unsafe_violation"]["val"] = h_s_unsafe_violation
+        s_descent_violation = x[descent_violation_mask]
+        u_star_index_descent_violation = u_star_index[descent_violation_mask]
+        h_s_descent_violation = h_x[descent_violation_mask]
+        Lf_h_descent_violation, Lg_h_descent_violation = self.V_lie_derivatives(s_descent_violation, gradh[descent_violation_mask])
 
-            # record descent_violation
-            c_list = [ self.gradient_descent_violation(x, u_i) for u_i in self.u_v ]
-            c_list = torch.hstack(c_list)
+        batch_dict["descent_violation"]["state"] = s_descent_violation
+        batch_dict["descent_violation"]["val"] = h_s_descent_violation
+        batch_dict["descent_violation"]["Lf_h"] =  Lf_h_descent_violation
+        batch_dict["descent_violation"]["Lg_h"] = Lg_h_descent_violation
+        batch_dict["descent_violation"]["u_star_index"] = u_star_index_descent_violation
 
-            descent_violation, u_star_index = torch.max(c_list, dim=1)
+        # get safety boundary
+        baseline = torch.min(self.dynamic_system.state_constraints(x), dim=1, keepdim=True).values
+        state_constraints_norm = torch.norm(baseline, dim=1)
+        inadmissible_boundary_index = state_constraints_norm < 0.1
+        inadmissible_boundary_state = x[inadmissible_boundary_index]
 
-            descent_violation_mask = torch.logical_and(descent_violation < 0, torch.logical_not(h_x_neg_mask.squeeze(dim=-1)))  
-
-            s_descent_violation = x[descent_violation_mask]
-            u_star_index_descent_violation = u_star_index[descent_violation_mask]
-            h_s_descent_violation = h_x[descent_violation_mask]
-            Lf_h_descent_violation, Lg_h_descent_violation = self.V_lie_derivatives(s_descent_violation, gradh[descent_violation_mask])
-
-            batch_dict["descent_violation"]["state"] = s_descent_violation
-            batch_dict["descent_violation"]["val"] = h_s_descent_violation
-            batch_dict["descent_violation"]["Lf_h"] =  Lf_h_descent_violation
-            batch_dict["descent_violation"]["Lg_h"] = Lg_h_descent_violation
-            batch_dict["descent_violation"]["u_star_index"] = u_star_index_descent_violation
-
-            # get safety boundary
-            state_constraints = self.dynamic_system.nominal_state_constraints(x)
-            state_constraints_norm = torch.norm(state_constraints, dim=1)
-            safe_boundary_index = state_constraints_norm < 0.02
-            safe_boundary_state = x[safe_boundary_index]
-
-            batch_dict["safe_boundary"]["state"] = safe_boundary_state
+        batch_dict["inadmissible_boundary"]["state"] = inadmissible_boundary_state
 
         return batch_dict
 

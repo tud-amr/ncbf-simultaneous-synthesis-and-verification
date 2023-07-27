@@ -17,9 +17,8 @@ class DataModule(pl.LightningDataModule):
         val_split: float = 0.1,
         train_batch_size: int = 64,
         test_batch_size: int = 128,
-        train_grid_gap: float = 0.01,
+        training_points_num: int = 100000,
         test_grid_gap: float = 0.1,
-        minimum_grid_gap: float = 0.0001
     ):
         super().__init__()
         self.system = system
@@ -27,44 +26,19 @@ class DataModule(pl.LightningDataModule):
         self.val_split = val_split
         self.train_batch_size = train_batch_size
         self.test_batch_size = test_batch_size
-        self.train_grid_gap = train_grid_gap
+        self.training_points_num = training_points_num
         self.test_grid_gap = test_grid_gap
-        self.minimum_grid_gap = minimum_grid_gap
-        self.initalize_data()
+        # self.initalize_data()
 
     def initalize_data(self):
         domain_lower_bd, domain_upper_bd = self.system.domain_limits
         domain_bd_gap = domain_upper_bd - domain_lower_bd
-
-        self.new_tree = Tree()
-
-        root_s = (domain_lower_bd+ domain_upper_bd )/2
-        root_s = root_s.reshape(1, -1)
-        root_grid_gap = domain_bd_gap.reshape(1, -1)
-        satisfy_constraint = True
-        root_data = [root_s, root_grid_gap, satisfy_constraint]
-
-        self.new_tree.create_node(f"{self.new_tree.size()}", identifier=self.uniname_of_data(root_data), data=root_data)  # root node
-
-        while(True): 
-            for leave_node in self.new_tree.leaves():
-                self.expand_leave(leave_node)
-
-            current_grid_gap = torch.min(leave_node.data[1])
-            if current_grid_gap < self.train_grid_gap:
-                break
-
-        sample_data = []
-        sample_data_grid_gap = []
-
         
-        for leave_node in self.new_tree.leaves():
-            sample_data.append(leave_node.data[0])
-            sample_data_grid_gap.append(leave_node.data[1])
+        s = torch.rand(self.training_points_num, self.system.ns) * domain_bd_gap + domain_lower_bd
 
         # generate training data
-        s_samples = torch.cat(sample_data, dim=0)
-        sample_data_grid_gap = torch.cat(sample_data_grid_gap, dim=0)
+        s_samples = s
+       
 
         # split into training and validation
         random_indices = torch.randperm(s_samples.shape[0])
@@ -74,10 +48,10 @@ class DataModule(pl.LightningDataModule):
         
         # store the data
         self.s_training = s_samples[training_indices]
-        self.grid_gap_training = sample_data_grid_gap[training_indices]
+        
         
         self.s_validation = s_samples[validation_indices]
-        self.grid_gap_validation = sample_data_grid_gap[validation_indices]
+        
         
         # generate other information
         self.safe_mask_training = self.system.safe_mask(self.s_training)  # self.s_training.norm(dim=-1) <= 0.6
@@ -102,8 +76,7 @@ class DataModule(pl.LightningDataModule):
 
         self.safe_mask_testing =  self.system.safe_mask(self.s_testing) # self.s_testing.norm(dim=-1) <= 0.6
         self.unsafe_mask_testing = self.system.unsafe_mask(self.s_testing)
-        self.grid_gap_testing = self.test_grid_gap * torch.ones(self.s_testing.shape[0], self.s_validation.shape[1])
-
+        
         print("Full dataset:")
         print(f"\t{self.s_training.shape[0]} training")
         print(f"\t{self.s_validation.shape[0]} validation")
@@ -177,19 +150,13 @@ class DataModule(pl.LightningDataModule):
 
         print("Preparing data........")
         
-        sample_data = []
-        sample_data_grid_gap = []
-        
-        for leave_node in self.new_tree.leaves():
-            if leave_node.data[2] == False:
-                self.expand_leave(leave_node)
+        domain_lower_bd, domain_upper_bd = self.system.domain_limits
+        domain_bd_gap = domain_upper_bd - domain_lower_bd
 
-        for leave_node in self.new_tree.leaves():
-            sample_data.append(leave_node.data[0])
-            sample_data_grid_gap.append(leave_node.data[1])
+        s = torch.rand(self.training_points_num, self.system.ns) * domain_bd_gap + domain_lower_bd
 
-        s_samples = torch.cat(sample_data, dim=0)
-        sample_data_grid_gap = torch.cat(sample_data_grid_gap, dim=0)
+        # generate training data
+        s_samples = s
 
         # split into training and validation
         random_indices = torch.randperm(s_samples.shape[0])
@@ -201,9 +168,6 @@ class DataModule(pl.LightningDataModule):
         self.s_training = s_samples[training_indices]
         self.s_validation = s_samples[validation_indices]
         
-        self.grid_gap_training = sample_data_grid_gap[training_indices]
-        self.grid_gap_validation = sample_data_grid_gap[validation_indices]
-
         # generate other information
         self.safe_mask_training = self.system.safe_mask(self.s_training)  # self.s_training.norm(dim=-1) <= 0.6
         self.unsafe_mask_training = self.system.unsafe_mask(self.s_training)
@@ -211,23 +175,50 @@ class DataModule(pl.LightningDataModule):
         self.safe_mask_validation =  self.system.safe_mask(self.s_validation) # self.s_validation.norm(dim=-1) <= 0.6
         self.unsafe_mask_validation = self.system.unsafe_mask(self.s_validation)
         
+        # generate testing data
+        s_test_grid_list = []
+       
+        for i in range(self.system.ns):
+            s_i_grid_test = torch.arange(domain_lower_bd[i], domain_upper_bd[i], self.test_grid_gap)
+            s_test_grid_list.append(s_i_grid_test.float())
+        
+        mesh_grids_test = torch.meshgrid(s_test_grid_list)
+        unsqueez_mesh_grid_test = [ torch.unsqueeze(mesh_grid, dim=0) for mesh_grid in mesh_grids_test ]
+        mesh_grids_test = torch.vstack(unsqueez_mesh_grid_test)
+        data_points_test = torch.flatten(mesh_grids_test, start_dim=1)
+        test_sample = data_points_test.T
+        self.s_testing = test_sample
+
+        self.safe_mask_testing =  self.system.safe_mask(self.s_testing) # self.s_testing.norm(dim=-1) <= 0.6
+        self.unsafe_mask_testing = self.system.unsafe_mask(self.s_testing)
+        
+
+        print("Full dataset:")
+        print(f"\t{self.s_training.shape[0]} training")
+        print(f"\t{self.s_validation.shape[0]} validation")
+        print("\t----------------------")
+
+        print(f"\t{self.safe_mask_training.sum()} safe points")
+        print(f"\t({self.safe_mask_validation.sum()} val)")
+        print(f"\t{self.unsafe_mask_training.sum()} unsafe points")
+        print(f"\t({self.unsafe_mask_validation.sum()} val)")
+        print("\t----------------------")
+        print(f"\t{self.s_testing.shape[0]} testing")
+        
         self.training_data = TensorDataset(
             self.s_training,
             self.safe_mask_training,
             self.unsafe_mask_training,
-            self.grid_gap_training
         )
         self.validation_data = TensorDataset(
             self.s_validation,
             self.safe_mask_validation,
             self.unsafe_mask_validation,
-            self.grid_gap_validation
             )
         self.testing_data = TensorDataset(
             self.s_testing,
             self.safe_mask_testing,
             self.unsafe_mask_testing,
-            self.grid_gap_testing
             )
 
 

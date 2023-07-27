@@ -12,7 +12,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using {device} device")
 
 
-data_module = DataModule(system=cart_pole_1, val_split=0, train_batch_size=64, test_batch_size=1024, train_grid_gap=1, test_grid_gap=0.1)
+data_module = DataModule(system=cart_pole_1, val_split=0, train_batch_size=64, test_batch_size=1024, training_sample_num=10, test_grid_gap=0.2)
 
 
 NN = NeuralNetwork.load_from_checkpoint("logs/CBF_logs/cart_pole/lightning_logs/version_2/checkpoints/epoch=13-step=602.ckpt", dynamic_system=cart_pole_1, data_module=data_module)
@@ -20,8 +20,7 @@ NN.to(device)
 
 trainer = pl.Trainer(accelerator = "gpu",
     devices = 1,
-    max_epochs=1,
-    inference_mode=False)
+    max_epochs=1,)
 trainer.test(NN)
 
 with open("safe_rl_cbf/Analysis/draw_CBF_shape.py") as f:
