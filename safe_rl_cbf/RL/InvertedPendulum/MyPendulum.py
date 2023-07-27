@@ -182,8 +182,9 @@ class MyPendulumEnv(gym.Env):
 
         # find safe state
         self.state =  self.np_random.uniform(low=low, high=high)
-        while self.h( torch.from_numpy(self.state).float().reshape((-1, 2)).to(self.h.device)) <= 0.01:
-            self.state =  self.np_random.uniform(low=low, high=high)
+        if self.with_CBF:
+            while self.h( torch.from_numpy(self.state).float().reshape((-1, 2)).to(self.h.device)) <= 0.01:
+                self.state =  self.np_random.uniform(low=low, high=high)
         
         self.last_u = None
 
