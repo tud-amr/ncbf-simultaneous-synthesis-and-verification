@@ -7,7 +7,7 @@ from safe_rl_cbf.RL.CartPole.MyCartPole import CartPoleEnv
 from safe_rl_cbf.RL.CartPole.cart_pole_callback import CustomCallback
 
 # import stable_baseline3
-from stable_baselines3 import PPO
+from stable_baselines3 import PPO, A2C
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.monitor import Monitor
@@ -37,7 +37,7 @@ for i in range(0, 1):
     my_cp_env = CartPoleEnv("rgb_array")
     # my_ip_env.set_barrier_function(NN)
 
-    # my_cp_env = Monitor(my_cp_env, filename=log_dir, info_keywords=("username",))
+    my_cp_env = Monitor(my_cp_env, filename=log_dir, info_keywords=("username",))
 
     custom_cb = CustomCallback(log_dir=log_dir)
 

@@ -22,12 +22,10 @@ env = CartPoleEnv("human")
 model = PPO.load("logs/stable_baseline_logs/cartpole/run0/cartpole_without_CBF")
 
 obs = env.reset()
-print(f"obs: {obs}")
 while True:
     action, _states = model.predict(obs)
     action[0] = 0
     obs, rewards, dones, info = env.step(action)
-    print(f"obs: {obs}")
     env.render()
     if  dones is True:     
         obs = env.reset()
