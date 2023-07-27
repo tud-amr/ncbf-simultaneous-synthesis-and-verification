@@ -1,5 +1,6 @@
 from safe_rl_cbf.Dynamics.Car import Car
 from safe_rl_cbf.Dynamics.InvertedPendulum import InvertedPendulum
+from safe_rl_cbf.Dynamics.CartPole import CartPole
 import torch
 
 ####################### create an one-D car object ######################
@@ -57,3 +58,29 @@ inverted_pendulum_1.set_control_limits(control_lower_bd2, control_upper_bd2)
 inverted_pendulum_1.set_state_constraints(rou2)
 inverted_pendulum_1.set_nominal_state_constraints(rou_n2)
 
+######################## create cart pole object ######################
+
+
+cart_pole_1 = CartPole()
+
+domain_lower_bd = torch.Tensor([-2.5, -5, -torch.pi * 3 / 2 , -5]).float()
+domain_upper_bd = -domain_lower_bd
+
+control_lower_bd =torch.Tensor([-15]).float()
+control_upper_bd = -control_lower_bd
+    
+def rou(s: torch.Tensor) -> torch.Tensor:
+    rou_1 = torch.unsqueeze(s[:, 0] + 2, dim=1)
+    rou_2 = torch.unsqueeze( - s[:, 0] + 2, dim=1)
+    
+    return torch.hstack( (rou_1, rou_2) ) 
+
+def rou_n(s: torch.Tensor) -> torch.Tensor:
+    s_norm = torch.norm(s, dim=1, keepdim=True)
+
+    return - s_norm + 0.6
+
+cart_pole_1.set_domain_limits(domain_lower_bd, domain_upper_bd)
+cart_pole_1.set_control_limits(control_lower_bd, control_upper_bd)
+cart_pole_1.set_state_constraints(rou)
+cart_pole_1.set_nominal_state_constraints(rou_n)

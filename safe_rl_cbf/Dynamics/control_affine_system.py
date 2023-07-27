@@ -144,6 +144,8 @@ class ControlAffineSystem(ABC):
     def domain_limits(self) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Return a tuple (upper, lower) describing the range of states for this system
+        upper : (ns,)
+        lower : (ns,)
         """
         # define upper and lower limits based around the nominal equilibrium input
         upper_limit = self.domain_upper_bd

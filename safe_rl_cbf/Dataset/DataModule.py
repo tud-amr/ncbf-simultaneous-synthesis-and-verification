@@ -46,9 +46,13 @@ class DataModule(pl.LightningDataModule):
 
         self.new_tree.create_node(f"{self.new_tree.size()}", identifier=self.uniname_of_data(root_data), data=root_data)  # root node
 
-        while( self.get_minimum_grid_gap() > self.train_grid_gap): 
+        while(True): 
             for leave_node in self.new_tree.leaves():
                 self.expand_leave(leave_node)
+
+            current_grid_gap = torch.min(leave_node.data[1])
+            if current_grid_gap < self.train_grid_gap:
+                break
 
         sample_data = []
         sample_data_grid_gap = []

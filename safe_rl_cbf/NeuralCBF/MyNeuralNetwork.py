@@ -5,6 +5,7 @@ import json
 import time
 import copy
 import itertools
+from itertools import product
 
 import torch
 from torch import nn
@@ -77,7 +78,7 @@ class NeuralNetwork(pl.LightningModule):
         self.fine_tune = fine_tune
         self.require_grad_descent_loss = require_grad_descent_loss
         self.h = nn.Sequential(
-                nn.Linear(2, 256),
+                nn.Linear(self.dynamic_system.ns, 256),
                 nn.Tanh(),
                 nn.Linear(256, 256),
                 nn.Tanh(),
@@ -102,7 +103,15 @@ class NeuralNetwork(pl.LightningModule):
         self.h0 = copy.deepcopy(self.h)
         
         u_lower, u_upper = self.dynamic_system.control_limits
-        self.u_v = torch.tensor([u_lower.item(), u_upper.item()])
+        dir = torch.tensor([0, 1])
+        combine = list(product(dir, repeat=self.dynamic_system.nu))
+        self.u_v = []
+        for i in range(len(combine)):
+            coefficent = torch.tensor(combine[i])
+            u_i = coefficent * u_upper + (1 - coefficent) * u_lower
+            self.u_v.append(u_i)
+        
+        self.u_v = torch.cat(self.u_v, dim=0).squeeze()
         
         # self.K = self.dynamic_system.K
         self.clf_lambda = clf_lambda
