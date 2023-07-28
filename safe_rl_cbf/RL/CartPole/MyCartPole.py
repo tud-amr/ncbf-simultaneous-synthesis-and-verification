@@ -98,7 +98,7 @@ class CartPoleEnv(gym.Env):
         self.total_mass = self.masspole + self.masscart
         self.length = 0.5  # actually half the pole's length
         self.polemass_length = self.masspole * self.length
-        self.force_mag = 15.0
+        self.force_mag = 20.0
         self.tau = 0.02  # seconds between state updates
         self.kinematics_integrator = "euler"
 
@@ -191,10 +191,19 @@ class CartPoleEnv(gym.Env):
             # or theta > self.theta_threshold_radians
         )
 
-        costs = angle_normalize(self.state[2]) ** 3 + 0.5 * self.state[3]**2 + 0.001 * ((force/6)**2)
+        theta = self.state[2]
+        if  - np.pi/ 6  < theta < np.pi / 6:
+            costs = -5
+        elif theta < - np.pi * 5 /6 or  theta >  np.pi * 5 / 6:
+            costs = 1
+        else:
+            costs = 0.1
+        
+        if abs(self.state[2]) < 0.1 and abs(self.state[3]) < 0.1:
+            costs += -10 
 
         if terminated:
-            costs += 1000
+            costs += 10
 
         self.reward = -costs
 
