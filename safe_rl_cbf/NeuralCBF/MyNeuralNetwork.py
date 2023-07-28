@@ -60,7 +60,7 @@ class NeuralNetwork(pl.LightningModule):
         fine_tune: bool = False,
         primal_learning_rate: float = 1e-3,
         gamma: float = 0.9,
-        clf_lambda: float = 2,
+        clf_lambda: float = 1,
         clf_relaxation_penalty: float = 50.0,
         ):
 
@@ -109,9 +109,9 @@ class NeuralNetwork(pl.LightningModule):
         for i in range(len(combine)):
             coefficent = torch.tensor(combine[i])
             u_i = coefficent * u_upper + (1 - coefficent) * u_lower
-            self.u_v.append(u_i)
+            self.u_v.append(u_i.reshape(1, -1))
         
-        self.u_v = torch.cat(self.u_v, dim=0).squeeze()
+        # self.u_v = torch.cat(self.u_v, dim=0)
         
         # self.K = self.dynamic_system.K
         self.clf_lambda = clf_lambda
@@ -385,7 +385,7 @@ class NeuralNetwork(pl.LightningModule):
 
         hs_next_list = []
         for u in self.u_v:
-            x_next = self.dynamic_system.step(s, torch.ones(s.shape[0], self.dynamic_system.nu).to(s.device)*u)
+            x_next = self.dynamic_system.step(s, torch.ones(s.shape[0], self.dynamic_system.nu).to(s.device)*u.to(s.device))
             hs_next = self.h(x_next)
             hs_next_list.append(hs_next)
         
@@ -729,7 +729,7 @@ class NeuralNetwork(pl.LightningModule):
         if self.use_h0:
             hs_next_list = []
             for u in self.u_v:
-                x_next = self.dynamic_system.step(s, torch.ones(s.shape[0], self.dynamic_system.nu).to(s.device)*u)
+                x_next = self.dynamic_system.step(s, torch.ones(s.shape[0], self.dynamic_system.nu).to(s.device)*u.to(s.device))
                 hs_next = self.h0(x_next)
                 hs_next_list.append(hs_next)
 
@@ -737,7 +737,8 @@ class NeuralNetwork(pl.LightningModule):
             hs_next, index_control = torch.max(hs_next, dim=1, keepdim=True)
 
             index_control = index_control.squeeze()
-            u_qp = self.u_v[index_control]
+            u_v = torch.cat(self.u_v, dim=0)
+            u_qp = u_v[index_control]
             u_qp = u_qp.to(s.device)
         else:
             u_min, u_max = self.dynamic_system.control_limits
@@ -1948,8 +1949,8 @@ class NeuralNetwork(pl.LightningModule):
                 self.trainer.should_stop = True
         
         if (self.current_epoch + 1) % (5 * self.trainer.reload_dataloaders_every_n_epochs ) == 0:
-                self.data_module.initalize_data()
-                # pass
+                # self.data_module.initalize_data()
+                pass
         
         print(f"current learning rate is {self.trainer.optimizers[0].param_groups[0]['lr']}")
 
@@ -2072,7 +2073,7 @@ class NeuralNetwork(pl.LightningModule):
         batch_dict["unsafe_violation"]["val"] = h_s_unsafe_violation
 
         # record descent_violation
-        c_list = [ self.gradient_descent_violation(x, u_i) for u_i in self.u_v ]
+        c_list = [ self.gradient_descent_violation(x, u_i.to(x.device)) for u_i in self.u_v ]
         c_list = torch.hstack(c_list)
 
         descent_violation, u_star_index = torch.max(c_list, dim=1)

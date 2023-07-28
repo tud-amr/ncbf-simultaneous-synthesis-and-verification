@@ -1,6 +1,7 @@
 from safe_rl_cbf.Dynamics.Car import Car
 from safe_rl_cbf.Dynamics.InvertedPendulum import InvertedPendulum
 from safe_rl_cbf.Dynamics.CartPole import CartPole
+from safe_rl_cbf.Dynamics.DubinsCar import DubinsCar
 import torch
 
 ####################### create an one-D car object ######################
@@ -84,3 +85,31 @@ cart_pole_1.set_domain_limits(domain_lower_bd, domain_upper_bd)
 cart_pole_1.set_control_limits(control_lower_bd, control_upper_bd)
 cart_pole_1.set_state_constraints(rou)
 cart_pole_1.set_nominal_state_constraints(rou_n)
+
+######################## create dubins car object ######################
+
+dubins_car = DubinsCar()
+
+domain_lower_bd = torch.Tensor([-1, -1, -torch.pi]).float()
+domain_upper_bd = torch.Tensor([9, 9, torch.pi]).float()
+
+control_lower_bd = torch.Tensor([-1, -1]).float()
+control_upper_bd = -control_lower_bd
+    
+def rou(s: torch.Tensor) -> torch.Tensor:
+    rou_1 = torch.unsqueeze(s[:, 0] + 0, dim=1)
+    rou_2 = torch.unsqueeze( - s[:, 0] + 8, dim=1)
+    rou_3 = torch.unsqueeze(s[:, 1] + 0, dim=1)
+    rou_4 = torch.unsqueeze( -s[:, 1] + 8, dim=1)
+    rou_5 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 2.8
+    return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_5) ) 
+
+def rou_n(s: torch.Tensor) -> torch.Tensor:
+    s_norm = torch.norm(s, dim=1, keepdim=True)
+
+    return - s_norm + 0.6
+
+dubins_car.set_domain_limits(domain_lower_bd, domain_upper_bd)
+dubins_car.set_control_limits(control_lower_bd, control_upper_bd)
+dubins_car.set_state_constraints(rou)
+dubins_car.set_nominal_state_constraints(rou_n)
