@@ -1164,9 +1164,9 @@ class NeuralNetwork(pl.LightningModule):
         if u_ref is not None:
             err_message = f"u_ref must have {x.shape[0]} rows, but got {u_ref.shape[0]}"
             assert u_ref.shape[0] == x.shape[0], err_message
-            err_message = f"u_ref must have {1} cols,"
+            err_message = f"u_ref must have {self.dynamic_system.nu} cols,"
             err_message += f" but got {u_ref.shape[1]}"
-            assert u_ref.shape[1] == 1, err_message
+            assert u_ref.shape[1] == self.dynamic_system.nu, err_message
         else:
             u_ref = self.nominal_controller(x)
             err_message = f"u_ref shouldn't be None!!!!"
@@ -1238,7 +1238,7 @@ class NeuralNetwork(pl.LightningModule):
         #
         #           u^T I u + relaxation_penalty * r^2
 
-        n_controls = 1
+        n_controls = self.dynamic_system.nu
         
         allow_relaxation = not (relaxation_penalty == float("inf"))
 
@@ -1282,10 +1282,10 @@ class NeuralNetwork(pl.LightningModule):
 
                     # Now build the CLF constraints
                 
-                    Lg_V_np = Lg_V[batch_idx, 0].detach().cpu().numpy()
+                    Lg_V_np = Lg_V[batch_idx, :].detach().cpu().numpy()
                     Lf_V_np = Lf_V[batch_idx, 0].detach().cpu().numpy()
                     V_np = V[batch_idx, 0].detach().cpu().numpy()
-                    clf_constraint = -(Lf_V_np + Lg_V_np * u + 0.5 * V_np - epsilon)
+                    clf_constraint = -(Lf_V_np + Lg_V_np @ u + 1 * V_np - epsilon)
                     if allow_relaxation:
                         clf_constraint -= r[0]
                     model.addConstr(clf_constraint <= 0.0, name=f"Scenario {0} Decrease")

@@ -11,42 +11,39 @@ import numpy as np
 import pymunk
 from pymunk import Vec2d
 import pymunk.pygame_util
-from safe_rl_cbf.RL.DubinsCar.DubinsCar import DubinsCar
+from safe_rl_cbf.RL.PointRobot.PointRobot import PointRobot
 
-class DubinsCarEnv(gym.Env):
+class PointRobotEnv(gym.Env):
     def __init__(self, render_sim=False):
         """
-        Initialize the DubinsCar environment
-        the state is [x, y, theta]
-        the action is [velocity, omega]
+        Initialize the PointRobot environment
+        the state is [x, y, v_x, v_y]
+        the action is [a_x, a_y]
         """
        
 
         # state property
         self.x_max = 8.0
-        self.y_max = 8.0
-        self.theta_max = 4.0
+        self.y_max = 8.0    
         self.v_max = 1.0
-        self.omega_max = 1.0
        
         
-        min_observation = np.array([0, 0, -1, -1, -1], dtype=np.float32)
-        max_observation = np.array([1, 1, 1, 1, 1], dtype=np.float32)
+        min_observation = np.array([0, 0, -1, -1], dtype=np.float32)
+        max_observation = np.array([1, 1, 1, 1], dtype=np.float32)
         self.observation_space = spaces.Box(low=min_observation, high=max_observation, dtype=np.float32)
         
         self.radius = 0.3
 
         self.x_init = 1.0
         self.y_init = 1.0
-        self.theta_init = 0.0
         self.v_init = 0.0
-        self.omega_init = 0.0
-        self.state = np.array([self.x_init, self.y_init, self.theta_init, self.v_init, self.omega_init])
+      
+        self.state = np.array([self.x_init, self.y_init, self.v_init, self.v_init])
 
         # action property
-        self.max_acc = 1.0
-        self.max_alpha = 1.0
-        self.action_space = spaces.Box(low=np.array([-self.max_acc, -self.max_alpha]), high=np.array([self.max_acc, self.max_alpha]), dtype=np.float32)
+        self.max_a_x = 1.0
+        self.max_a_y = 1.0
+        self.action_space = spaces.Box(low=np.array([-self.max_a_x, -self.max_a_y]), high=np.array([self.max_a_x, self.max_a_y]), dtype=np.float32)
         
         # simulation property
         self.current_time_step = 0
@@ -93,7 +90,7 @@ class DubinsCarEnv(gym.Env):
             pymunk.pygame_util.positive_y_is_up = True
     
     def init_agent(self):
-        self.car = DubinsCar(1, self.radius, self.state, self.space, self.scale, self.dt)
+        self.point_robot = PointRobot(1, self.radius, self.state, self.space, self.scale, self.dt)
 
     def init_obstacles(self):
         body = pymunk.Body(body_type=pymunk.Body.STATIC)
@@ -141,20 +138,20 @@ class DubinsCarEnv(gym.Env):
             u = action
 
         
-        # F1 = u[0] * self.car.mass * self.scale
-        # F2 = u[1] * self.car.mass * self.car.radius / 4 
+        F1 = u[0] * self.point_robot.mass * self.scale
+        F2 = u[1] * self.point_robot.mass * self.scale
 
-        # self.car.shape.body.apply_force_at_local_point((F1, 0), (0, 0))
-        # self.car.shape.body.apply_force_at_local_point((0, F2), (self.car.radius, 0))
+        self.point_robot.shape.body.apply_force_at_local_point((F1, 0), (0, 0))
+        self.point_robot.shape.body.apply_force_at_local_point((0, F2), (0, 0))
         # self.car.shape.body.apply_force_at_local_point((0, -F2), (-self.car.radius, 0))
 
-        # self.space.step(self.dt)
-        self.car.step(u)
+        self.space.step(self.dt)
+        # self.car.step(u)
         self.current_time_step += 1
 
 
         obs = self.get_observation()
-        x, y, theta, v, w = self.state
+        x, y, v_x, v_y = self.state
 
         distance_to_target_x = self.x_target - x
         distance_to_target_y = self.y_target - y
@@ -166,7 +163,7 @@ class DubinsCarEnv(gym.Env):
             # reach the boundary
             reward = -10
             done = True
-        elif np.abs(obs[3]) == 1 or np.abs(obs[4]) == 1 or np.abs(obs[3]) == -1 or np.abs(obs[4]) == -1:
+        elif np.abs(obs[2]) == 1 or np.abs(obs[3]) == 1:
             # reach the maximum velocity or angular velocity
             reward = -10
             done = True
@@ -183,28 +180,24 @@ class DubinsCarEnv(gym.Env):
         return obs, reward, done, info
     
     def get_observation(self):
-        x, y = self.car.shape.body.position / self.scale
-        theta = self.car.shape.body.angle
-        theta = (theta + np.pi) % (2 * np.pi) - np.pi
-        v = self.car.shape.body.velocity.length / self.scale
-        w = self.car.shape.body.angular_velocity
-        self.state = np.array([x, y, theta, v, w])
+        x, y = self.point_robot.shape.body.position / self.scale
+        v_x, v_y = self.point_robot.shape.body.velocity / self.scale
+
+        self.state = np.array([x, y, v_x, v_y])
 
 
         x_obs = np.clip(x/self.x_max, 0, 1)
         y_obs = np.clip(y/self.y_max, 0, 1)
-        theta_obs = np.clip(theta/(4), -1, 1)
-        v_obs = np.clip(v/self.v_max, -1, 1)
-        w_obs = np.clip(w/self.omega_max, -1, 1)
+        v_x_obs = np.clip(v_x/self.v_max, -1, 1)
+        v_y_obs = np.clip(v_y/self.v_max, -1, 1)
         
-        return np.array([x_obs, y_obs, theta_obs, v_obs, w_obs], dtype=np.float32)
+        return np.array([x_obs, y_obs, v_x_obs, v_y_obs], dtype=np.float32)
 
     def reset(self):
         self.current_time_step = 0
         self.x_init = random.uniform(0, self.x_max)
         self.y_init = random.uniform(0, self.y_max)
-        self.theta_init = random.uniform(-self.theta_max, self.theta_max)
-        self.car.set_states(self.x_init, self.y_init, self.theta_init)
+        self.point_robot.set_states(self.x_init, self.y_init)
         return self.get_observation()
 
     def render(self, mode='human'): 
@@ -222,5 +215,5 @@ class DubinsCarEnv(gym.Env):
 
 
 if __name__ == "__main__":
-    env = DubinsCarEnv(render_sim=True)
+    env = PointRobotEnv(render_sim=True)
     

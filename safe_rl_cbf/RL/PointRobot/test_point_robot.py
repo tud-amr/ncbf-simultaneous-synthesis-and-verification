@@ -2,7 +2,7 @@ import numpy as np
 from stable_baselines3 import PPO
 import torch
 
-from safe_rl_cbf.RL.DubinsCar.dubins_car_env import DubinsCarEnv
+from safe_rl_cbf.RL.PointRobot.point_robot_env import PointRobotEnv
 from safe_rl_cbf.NeuralCBF.MyNeuralNetwork import NeuralNetwork
 from safe_rl_cbf.Dynamics.dynamic_system_instances import dubins_car
 from safe_rl_cbf.Dataset.TrainingDataModule import TrainingDataModule
@@ -11,7 +11,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 system = dubins_car
 render_sim = True #if True, a graphic is generated
 
-env = DubinsCarEnv(render_sim=render_sim)
+env = PointRobotEnv(render_sim=render_sim)
 
 # model = PPO.load("new_agent")
 # model.set_env(env)
@@ -28,7 +28,7 @@ obs = env.reset()
 try:
     while True:
         # action, _ = model.predict(obs) 
-        action = np.array([0.5, 1])
+        action = np.array([-0.1, 0.1])
         obs, reward, done, info = env.step(action)
         if render_sim is True:
             env.render()
