@@ -2,6 +2,7 @@ __pycache__
 lightning_logs
 stable_baseline_logs
 stable_baseline_logs_backup
+Drone-2d-custom-gym-env-for-reinforcement-learning
 CBF_logs
 CBF_logs_backup
 backup
