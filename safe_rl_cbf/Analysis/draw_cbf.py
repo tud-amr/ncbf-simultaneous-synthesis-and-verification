@@ -11,7 +11,7 @@ from matplotlib.lines import Line2D
 import scipy.io as sio
 
 from safe_rl_cbf.NeuralCBF.MyNeuralNetwork import *
-from safe_rl_cbf.Dynamics.dynamic_system_instances import car1, inverted_pendulum_1, cart_pole_1, dubins_car
+from safe_rl_cbf.Dynamics.dynamic_system_instances import car1, inverted_pendulum_1, cart_pole_1, dubins_car, dubins_car_acc, point_robot
 from safe_rl_cbf.Dataset.DataModule import DataModule
 
 
@@ -23,7 +23,7 @@ if not os.path.exists("test_fig"):
 x_index = 0
 y_index = 1
 
-system = dubins_car
+system = point_robot
 ##################### read data #######################
 
 

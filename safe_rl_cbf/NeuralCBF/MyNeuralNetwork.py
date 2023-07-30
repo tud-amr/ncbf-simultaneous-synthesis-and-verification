@@ -402,9 +402,9 @@ class NeuralNetwork(pl.LightningModule):
 
 
         
-        unsafe_violation = coefficient_for_unsafe_state_loss *  torch.abs( - baseline[unsafe_mask] + hs[unsafe_mask])
+        # unsafe_violation = coefficient_for_unsafe_state_loss *  torch.abs( - baseline[unsafe_mask] + hs[unsafe_mask])
         
-        unsafe_hs_term = unsafe_violation.mean() 
+        # unsafe_hs_term = unsafe_violation.mean() 
         # if not torch.isnan(unsafe_hs_term):
         #     loss.append(("unsafe_region_term", unsafe_hs_term))
         
@@ -1819,11 +1819,11 @@ class NeuralNetwork(pl.LightningModule):
         
         # self.training_record_dict["performance_grad"] +=  self.get_mean_grad_with_params(performance_loss)
         # self.training_record_dict["safety_grad"] +=  self.get_mean_grad_with_params(safety_loss)
-        self.training_record_dict["descent_grad_mean"] +=  self.get_mean_grad_with_params(descent_loss)
-        self.training_record_dict["descent_grad_max"] +=  self.get_max_grad_with_params(descent_loss)
+        # self.training_record_dict["descent_grad_mean"] +=  self.get_mean_grad_with_params(descent_loss)
+        # self.training_record_dict["descent_grad_max"] +=  self.get_max_grad_with_params(descent_loss)
         # self.training_record_dict["performance_loss"].append(performance_loss.item())
         # self.training_record_dict["safety_loss"].append(safety_loss.item())
-        self.training_record_dict["descent_loss"].append(descent_loss.item())
+        # self.training_record_dict["descent_loss"].append(descent_loss.item())
         # self.training_record_dict["angles"].append( self.get_update_direction_between_losses( safety_loss, descent_loss))
         # self.training_record_dict["angles2"].append( self.get_update_direction_between_losses( safety_loss, performance_loss))
         

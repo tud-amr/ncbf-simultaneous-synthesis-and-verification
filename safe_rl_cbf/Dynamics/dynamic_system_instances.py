@@ -2,6 +2,8 @@ from safe_rl_cbf.Dynamics.Car import Car
 from safe_rl_cbf.Dynamics.InvertedPendulum import InvertedPendulum
 from safe_rl_cbf.Dynamics.CartPole import CartPole
 from safe_rl_cbf.Dynamics.DubinsCar import DubinsCar
+from safe_rl_cbf.Dynamics.DubinsCarAcc import DubinsCarAcc
+from safe_rl_cbf.Dynamics.PointRobot import PointRobot
 import torch
 
 ####################### create an one-D car object ######################
@@ -101,7 +103,7 @@ def rou(s: torch.Tensor) -> torch.Tensor:
     rou_2 = torch.unsqueeze( - s[:, 0] + 8, dim=1)
     rou_3 = torch.unsqueeze(s[:, 1] + 0, dim=1)
     rou_4 = torch.unsqueeze( -s[:, 1] + 8, dim=1)
-    rou_5 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 2.8
+    rou_5 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1.4
     return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_5) ) 
 
 def rou_n(s: torch.Tensor) -> torch.Tensor:
@@ -113,3 +115,66 @@ dubins_car.set_domain_limits(domain_lower_bd, domain_upper_bd)
 dubins_car.set_control_limits(control_lower_bd, control_upper_bd)
 dubins_car.set_state_constraints(rou)
 dubins_car.set_nominal_state_constraints(rou_n)
+
+
+######################## create dubins car acc object ######################
+
+dubins_car_acc = DubinsCarAcc()
+
+domain_lower_bd = torch.Tensor([-1, -1, -4, -1.2, -1.2]).float()
+domain_upper_bd = torch.Tensor([9, 9, 4, 1.2, 1.2]).float()
+
+control_lower_bd = torch.Tensor([-1, -1]).float()
+control_upper_bd = -control_lower_bd
+    
+    
+def rou(s: torch.Tensor) -> torch.Tensor:
+    rou_1 = torch.unsqueeze(s[:, 0] + 0, dim=1)
+    rou_2 = torch.unsqueeze( - s[:, 0] + 8, dim=1)
+    rou_3 = torch.unsqueeze(s[:, 1] + 0, dim=1)
+    rou_4 = torch.unsqueeze( -s[:, 1] + 8, dim=1)
+    rou_5 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1.4
+    rou_6 = torch.unsqueeze(s[:, 2] + torch.pi, dim=1)
+    
+    return torch.hstack( (rou_1, rou_2, rou_3, rou_4) ) 
+
+def rou_n(s: torch.Tensor) -> torch.Tensor:
+    s_norm = torch.norm(s, dim=1, keepdim=True)
+
+    return - s_norm + 0.6
+
+dubins_car_acc.set_domain_limits(domain_lower_bd, domain_upper_bd)
+dubins_car_acc.set_control_limits(control_lower_bd, control_upper_bd)
+dubins_car_acc.set_state_constraints(rou)
+dubins_car_acc.set_nominal_state_constraints(rou_n)
+
+
+######################## create point robot object ######################
+
+point_robot = PointRobot()
+
+domain_lower_bd = torch.Tensor([-1, -1, -1.2, -1.2]).float()
+domain_upper_bd = torch.Tensor([9, 9, 1.2, 1.2]).float()
+
+control_lower_bd = torch.Tensor([-1, -1]).float()
+control_upper_bd = -control_lower_bd
+    
+    
+def rou(s: torch.Tensor) -> torch.Tensor:
+    rou_1 = torch.unsqueeze(s[:, 0] + 0, dim=1)
+    rou_2 = torch.unsqueeze( - s[:, 0] + 8, dim=1)
+    rou_3 = torch.unsqueeze(s[:, 1] + 0, dim=1)
+    rou_4 = torch.unsqueeze( -s[:, 1] + 8, dim=1)
+    rou_5 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1.4
+
+    return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_5) ) 
+
+def rou_n(s: torch.Tensor) -> torch.Tensor:
+    s_norm = torch.norm(s, dim=1, keepdim=True)
+
+    return - s_norm + 0.6
+
+point_robot.set_domain_limits(domain_lower_bd, domain_upper_bd)
+point_robot.set_control_limits(control_lower_bd, control_upper_bd)
+point_robot.set_state_constraints(rou)
+point_robot.set_nominal_state_constraints(rou_n)

@@ -155,7 +155,7 @@ class TestingDataModule(pl.LightningDataModule):
             if value is None:
                 s_i_grid_test = torch.linspace( domain_lower_bd[key], domain_upper_bd[key], self.test_points_num ) 
             else:
-                s_i_grid_test = torch.ones(self.test_points_num) * value
+                s_i_grid_test = torch.ones(1) * value
             s_test_grid_list.append(s_i_grid_test.float())
         
         mesh_grids_test = torch.meshgrid(s_test_grid_list)
