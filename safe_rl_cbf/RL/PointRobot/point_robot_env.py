@@ -124,7 +124,7 @@ class PointRobotEnv(gym.Env):
             #     raise Exception(f"Current state [{self.state[0]}, {self.state[1]}] is unsafe, h(s)={hs}")
             
             u_ref = torch.from_numpy(action).float().reshape((-1,self.h.dynamic_system.nu)).to(device)            
-            u_result, r_result = self.h.solve_CLF_QP(s, gradh, u_ref, epsilon=0.0)
+            u_result, r_result = self.h.solve_CLF_QP(s, gradh, u_ref, epsilon=0.1)
 
             if r_result > 0.0:
                 self.break_safety += 1
