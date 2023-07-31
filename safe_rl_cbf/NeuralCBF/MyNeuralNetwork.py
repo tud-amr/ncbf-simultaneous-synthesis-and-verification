@@ -110,6 +110,16 @@ class NeuralNetwork(pl.LightningModule):
             coefficent = torch.tensor(combine[i])
             u_i = coefficent * u_upper + (1 - coefficent) * u_lower
             self.u_v.append(u_i.reshape(1, -1))
+
+        d_lower, d_upper = self.dynamic_system.disturbance_limits
+        dir = torch.tensor([0, 1])
+        combine = list(product(dir, repeat=self.dynamic_system.nd))
+        self.d_v = []
+        for i in range(len(combine)):
+            coefficent = torch.tensor(combine[i])
+            d_i = coefficent * d_upper + (1 - coefficent) * d_lower
+            self.d_v.append(d_i.reshape(1, -1))
+        
         
         # self.u_v = torch.cat(self.u_v, dim=0)
         
@@ -343,15 +353,17 @@ class NeuralNetwork(pl.LightningModule):
 
         f = self.dynamic_system.f(x)
         g = self.dynamic_system.g(x)
+        d = self.dynamic_system.d(x)
         # print(f"f shape is {f.shape}")
         # print(f"g shape is {g.shape}")
 
         Lf_V = torch.bmm(gradh, f.unsqueeze(dim=-1)).squeeze(1)
         Lg_V = torch.bmm(gradh, g).squeeze(1)
+        Ld_V = torch.bmm(gradh, d).squeeze(1)
         # print(f"Lf_V shape is {Lf_V.shape}")
         # print(f"Lg_V shape is {Lg_V.shape}")
         
-        return Lf_V, Lg_V
+        return Lf_V, Lg_V, Ld_V
 
     def boundary_loss(
         self,
@@ -383,15 +395,44 @@ class NeuralNetwork(pl.LightningModule):
 
         safe_mask = torch.logical_not(unsafe_mask)
 
+        # find the action that maximize the hamiltonian
         hs_next_list = []
         for u in self.u_v:
             with torch.no_grad():
-                x_next = self.dynamic_system.step(s, torch.ones(s.shape[0], self.dynamic_system.nu).to(s.device)*u.to(s.device))
+                x_next = self.dynamic_system.step(s, u=torch.ones(s.shape[0], self.dynamic_system.nu).to(s.device)*u.to(s.device))
                 hs_next = self.h(x_next)
                 hs_next_list.append(hs_next)
-        
+
         hs_next = torch.stack(hs_next_list, dim=1)
-        hs_next = torch.max(hs_next, dim=1, keepdim=True).values.detach().squeeze(dim=-1)
+        _ , index_control = torch.max(hs_next, dim=1, keepdim=True)
+
+        index_control = index_control.squeeze()
+        u_v = torch.cat(self.u_v, dim=0)
+        u_max = u_v[index_control]
+        u_max = u_max.to(s.device)
+        
+        # find the disturbance that minimize the hamiltonian
+        hs_next_list = []
+        for d in self.d_v:
+            with torch.no_grad():
+                x_next = self.dynamic_system.step(s, d=torch.ones(s.shape[0], self.dynamic_system.nd).to(s.device)*d.to(s.device))
+                hs_next = self.h(x_next)
+                hs_next_list.append(hs_next)
+
+        hs_next = torch.stack(hs_next_list, dim=1)
+        _, index_control = torch.min(hs_next, dim=1, keepdim=True)
+
+        index_control = index_control.squeeze()
+        d_v = torch.cat(self.d_v, dim=0)
+        d_min = d_v[index_control]
+        d_min = d_min.to(s.device)
+        
+
+        # compute the hamiltonian
+        with torch.no_grad():
+            x_next = self.dynamic_system.step(s, u=u_max, d=d_min)
+            hs_next = self.h(x_next)
+
 
         gamma = 0.999
         hs_bar = (1- gamma) * baseline + gamma * torch.min(baseline, hs_next)
@@ -480,7 +521,7 @@ class NeuralNetwork(pl.LightningModule):
         clbf_descent_term_lin = torch.tensor(0.0).type_as(s)
         clbf_descent_boundary_term = torch.tensor(0.0).type_as(s)
         # Get the current value of the CLBF and its Lie derivatives
-        Lf_V, Lg_V = self.V_lie_derivatives(s, gradh)
+        Lf_V, Lg_V, Ld_V = self.V_lie_derivatives(s, gradh)
 
         u_min, u_max = self.dynamic_system.control_limits
         
@@ -616,7 +657,7 @@ class NeuralNetwork(pl.LightningModule):
         data_l = s - gridding_gap
         data_u = s + gridding_gap
 
-        Lf_V, Lg_V = self.V_lie_derivatives(s, gradh)
+        Lf_V, Lg_V, Ld_V = self.V_lie_derivatives(s, gradh)
 
         u_min, u_max = self.dynamic_system.control_limits
         
@@ -725,9 +766,10 @@ class NeuralNetwork(pl.LightningModule):
         # loss.append(("QP_relaxation", qp_relaxation_loss))
 
         # Get the current value of the CLBF and its Lie derivatives
-        Lf_V, Lg_V, = self.V_lie_derivatives(s, gradh)
+        Lf_V, Lg_V, Ld_V= self.V_lie_derivatives(s, gradh)
 
         if self.use_h0:
+            # find the action that maximize the hamiltonian
             hs_next_list = []
             for u in self.u_v:
                 with torch.no_grad():
@@ -736,12 +778,28 @@ class NeuralNetwork(pl.LightningModule):
                     hs_next_list.append(hs_next)
 
             hs_next = torch.stack(hs_next_list, dim=1)
-            hs_next, index_control = torch.max(hs_next, dim=1, keepdim=True)
+            _, index_control = torch.max(hs_next, dim=1, keepdim=True)
 
             index_control = index_control.squeeze()
             u_v = torch.cat(self.u_v, dim=0)
             u_qp = u_v[index_control]
             u_qp = u_qp.to(s.device)
+
+            # find the disturbance that minimize the hamiltonian
+            hs_next_list = []
+            for d in self.d_v:
+                with torch.no_grad():
+                    x_next = self.dynamic_system.step(s, d=torch.ones(s.shape[0], self.dynamic_system.nd).to(s.device)*d.to(s.device))
+                    hs_next = self.h0(x_next)
+                    hs_next_list.append(hs_next)
+
+            hs_next = torch.stack(hs_next_list, dim=1)
+            _, index_control = torch.min(hs_next, dim=1, keepdim=True)
+
+            index_control = index_control.squeeze()
+            d_v = torch.cat(self.d_v, dim=0)
+            d_min = d_v[index_control]
+            d_min = d_min.to(s.device)
         else:
             u_min, u_max = self.dynamic_system.control_limits
         
@@ -757,7 +815,12 @@ class NeuralNetwork(pl.LightningModule):
                 torch.bmm(
                             Lg_V[:, :].unsqueeze(1),
                             u_qp.reshape(-1, self.dynamic_system.nu, 1)
+                        ) + \
+                torch.bmm(
+                            Ld_V[:, :].unsqueeze(1),
+                            d_min.reshape(-1, self.dynamic_system.nd, 1)
                         )
+                        
                 
         Vdot = Vdot.reshape(hs.shape)
 
@@ -1160,7 +1223,7 @@ class NeuralNetwork(pl.LightningModule):
         """
         # Get the value of the CLF and its Lie derivatives
         H = self.h(x)
-        Lf_V, Lg_V = self.V_lie_derivatives(x, gradh)
+        Lf_V, Lg_V, Ld_V = self.V_lie_derivatives(x, gradh)
 
         # Get the reference control input as well
         if u_ref is not None:
@@ -1509,7 +1572,7 @@ class NeuralNetwork(pl.LightningModule):
 
     def test(self, x, relaxation_penalty=1000, epsilon=0.1):
         H = self.h(x)
-        Lf_V, Lg_V = self.V_lie_derivatives(x)
+        Lf_V, Lg_V, Ld_V = self.V_lie_derivatives(x)
         u_ref = self.nominal_controller(x)
 
         u0, r0 = self._solve_CLF_QP_OptNet(x, u_ref, H, Lf_V, Lg_V, relaxation_penalty, epsilon=epsilon)
@@ -1526,7 +1589,7 @@ class NeuralNetwork(pl.LightningModule):
         hs = self.h(s)
         gradh = self.jacobian(hs, s)
 
-        Lf_h, Lg_h = self.V_lie_derivatives(s, gradh)
+        Lf_h, Lg_h, Ld_V = self.V_lie_derivatives(s, gradh)
 
         return Lf_h + Lg_h * u_vi
 
@@ -2086,7 +2149,7 @@ class NeuralNetwork(pl.LightningModule):
         s_descent_violation = x[descent_violation_mask]
         u_star_index_descent_violation = u_star_index[descent_violation_mask]
         h_s_descent_violation = h_x[descent_violation_mask]
-        Lf_h_descent_violation, Lg_h_descent_violation = self.V_lie_derivatives(s_descent_violation, gradh[descent_violation_mask])
+        Lf_h_descent_violation, Lg_h_descent_violation, _ = self.V_lie_derivatives(s_descent_violation, gradh[descent_violation_mask])
 
         batch_dict["descent_violation"]["state"] = s_descent_violation
         batch_dict["descent_violation"]["val"] = h_s_descent_violation

@@ -110,7 +110,7 @@ class DubinsCarRotateEnv(gym.Env):
     def step(self, action):
         
         reward = 0
-        action = action / 5
+        action = action
 
         if self.use_cbf:
             if self.h is None:

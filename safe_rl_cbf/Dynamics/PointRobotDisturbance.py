@@ -176,16 +176,24 @@ if __name__ == "__main__":
     x = torch.tensor([5, 5, 0, 1], dtype=torch.float).reshape(1, 4)
     # x = torch.rand(3,3, dtype=torch.float)
     u_ref = torch.rand(1, 2, dtype=torch.float)
-    
+    disturb = torch.rand(1, 2, dtype=torch.float) 
+
+
     f = point_robot_dis.f(x)
     print(f"the shape of f is {f.shape} \n f is {f} \n ")
     g = point_robot_dis.g(x)
     print(f"the shape of g is {g.shape} \n g is {g} \n ")
 
-    dsdt =point_robot_dis.dsdt(x, u_ref)
-    print(f"the shape of dsdt is {dsdt.shape} \n dsdt is {dsdt} \n ")
+    d = point_robot_dis.d(x)
+    print(f"the shape of d is {d.shape} \n d is {d} \n ")
 
-    x_next = point_robot_dis.step(x, u_ref)
+    dsdt =point_robot_dis.dsdt(x, u_ref)
+    print(f"dsdt is {dsdt}")
+
+    dsdt =point_robot_dis.dsdt(x, u_ref, disturb)
+    print(f"dsdt with disturbance is {dsdt} \n ")
+
+    x_next = point_robot_dis.step(x, u_ref, disturb)
     print(f"x is {x} \n")
     print(f"x_nest is {x_next}")
 
