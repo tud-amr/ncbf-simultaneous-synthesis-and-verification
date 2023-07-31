@@ -164,20 +164,38 @@ class ControlAffineSystem(ABC):
             )
         )
 
-    def dsdt(self, s: torch.Tensor, u: torch.Tensor, d : torch.Tensor = None) -> torch.Tensor:
+    def dsdt(self, s: torch.Tensor, u: torch.Tensor = None, d : torch.Tensor = None) -> torch.Tensor:
         """
         Return the state derivative dsdt for a given state and control input.
         s: (bs, ns)
         u: (bs, nu)
         d: (bs, nd)
         """
+        if u is None:
+            control_term = torch.zeros_like(s)
+        else:
+            control_term = torch.bmm(self.g(s), u.unsqueeze(dim=-1)).squeeze(dim=-1)
 
-        ds = self.f(s) + torch.bmm(self.g(s), u.unsqueeze(dim=-1)).squeeze(dim=-1)
+        if d is None:
+            disturbance_term = torch.zeros_like(s)
+        else:
+            disturbance_term = torch.bmm(self.d(s), d.unsqueeze(dim=-1)).squeeze(dim=-1)
+
+        ds = self.f(s) + control_term + disturbance_term
     
         return ds
 
-    def step(self, s: torch.Tensor, u: torch.Tensor, dt=None) -> torch.Tensor:
-        ds = self.dsdt(s, u)
+    def step(self, s: torch.Tensor, u: torch.Tensor=None, d: torch.Tensor=None , dt=None) -> torch.Tensor:
+        
+        if u is None and d is None:
+            ds = self.dsdt(s)
+        elif u is None:
+            ds = self.dsdt(s, d=d)
+        elif d is None:
+            ds = self.dsdt(s, u=u)
+        else:
+            ds = self.dsdt(s, u=u, d=d)
+
         if dt is None:
             s_next = s + ds * self.dt
         else:

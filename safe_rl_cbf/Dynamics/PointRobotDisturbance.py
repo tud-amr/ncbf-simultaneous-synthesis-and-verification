@@ -142,13 +142,16 @@ class PointRobotDisturbance(ControlAffineSystem):
 
 if __name__ == "__main__":
 
-    point_robot = PointRobotDisturbance()
+    point_robot_dis = PointRobotDisturbance()
 
     domain_lower_bd = torch.Tensor([-1, -1, -1.2, -1.2]).float()
     domain_upper_bd = torch.Tensor([9, 9, 1.2, 1.2]).float()
 
     control_lower_bd = torch.Tensor([-1, -1]).float()
     control_upper_bd = -control_lower_bd
+
+    disturbance_lower_bd = torch.Tensor([-0.3, -0.3]).float()
+    disturbance_upper_bd = -disturbance_lower_bd
         
     def rou(s: torch.Tensor) -> torch.Tensor:
         rou_1 = torch.unsqueeze(s[:, 0] + 8, dim=1)
@@ -164,26 +167,26 @@ if __name__ == "__main__":
 
         return - s_norm + 0.6
 
-    point_robot.set_domain_limits(domain_lower_bd, domain_upper_bd)
-    point_robot.set_control_limits(control_lower_bd, control_upper_bd)
-    point_robot.set_state_constraints(rou)
-    point_robot.set_nominal_state_constraints(rou_n)
+    point_robot_dis.set_domain_limits(domain_lower_bd, domain_upper_bd)
+    point_robot_dis.set_control_limits(control_lower_bd, control_upper_bd)
+    point_robot_dis.set_state_constraints(rou)
+    point_robot_dis.set_nominal_state_constraints(rou_n)
 
     
     x = torch.tensor([5, 5, 0, 1], dtype=torch.float).reshape(1, 4)
     # x = torch.rand(3,3, dtype=torch.float)
     u_ref = torch.rand(1, 2, dtype=torch.float)
     
-    f = point_robot.f(x)
+    f = point_robot_dis.f(x)
     print(f"the shape of f is {f.shape} \n f is {f} \n ")
-    g = point_robot.g(x)
+    g = point_robot_dis.g(x)
     print(f"the shape of g is {g.shape} \n g is {g} \n ")
 
-    dsdt =point_robot.dsdt(x, u_ref)
+    dsdt =point_robot_dis.dsdt(x, u_ref)
     print(f"the shape of dsdt is {dsdt.shape} \n dsdt is {dsdt} \n ")
 
-    x_next = point_robot.step(x, u_ref)
+    x_next = point_robot_dis.step(x, u_ref)
     print(f"x is {x} \n")
     print(f"x_nest is {x_next}")
 
-    rou = point_robot.state_constraints(x)
+    rou = point_robot_dis.state_constraints(x)
