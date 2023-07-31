@@ -19,8 +19,8 @@ def draw_cbf(system):
 
     ############### create folder #################
 
-    if not os.path.exists("test_fig"):
-        os.makedirs("test_fig")
+    if not os.path.exists("logs/test_fig"):
+        os.makedirs("logs/test_fig")
 
     x_index = 0
     y_index = 1

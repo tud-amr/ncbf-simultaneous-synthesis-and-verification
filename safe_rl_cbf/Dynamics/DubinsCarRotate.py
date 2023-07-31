@@ -30,6 +30,7 @@ class DubinsCarRotate(ControlAffineSystem):
     # Number of states and controls
     N_DIMS = 3
     N_CONTROLS = 1
+    N_DISTURBANCES = 0
 
     # State indices
     X = 0
@@ -39,9 +40,9 @@ class DubinsCarRotate(ControlAffineSystem):
     # Control indices
     W = 0
 
-    def __init__(self, ns=N_DIMS, nu=N_CONTROLS, v=0.5, dt=0.01):
+    def __init__(self, ns=N_DIMS, nu=N_CONTROLS, nd=N_DISTURBANCES,  v=0.5, dt=0.01):
         self.v = v
-        super().__init__(ns, nu, dt)
+        super().__init__(ns, nu, nd, dt)
 
 
     def f(self, s: torch.Tensor) -> torch.Tensor:
@@ -76,6 +77,25 @@ class DubinsCarRotate(ControlAffineSystem):
         g[:, DubinsCarRotate.THETA, DubinsCarRotate.W] = 1.0
 
         return g
+
+    def d(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Return the disturbance dynamics.
+
+        args:
+            x: bs x self.n_dims tensor of state
+            params: a dictionary giving the parameter values for the system. If None,
+                    default to the nominal parameters used at initialization
+        returns:
+            d: bs x self.n_dims x self.n_disturbances tensor
+        """
+        # Extract batch size and set up a tensor for holding the result
+        batch_size = x.shape[0]
+        d = torch.zeros((batch_size, self.ns, self.nd))
+        d = d.type_as(x)
+
+        return d
+
 
     def step(self, s: torch.Tensor, u: torch.Tensor, dt=None) -> torch.Tensor:
         s_next = super().step(s, u, dt)

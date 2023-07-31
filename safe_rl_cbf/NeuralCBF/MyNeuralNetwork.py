@@ -121,7 +121,7 @@ class NeuralNetwork(pl.LightningModule):
 
         # self.generate_cvx_solver()
         # self.generate_cvx_solver2()
-        self.generate_convex_relaxation_solver()
+        # self.generate_convex_relaxation_solver()
 
         self.use_h0 = False
         self.training_record_dict = {"performance_loss": [], "safety_loss": [], "descent_loss": [],
@@ -385,9 +385,10 @@ class NeuralNetwork(pl.LightningModule):
 
         hs_next_list = []
         for u in self.u_v:
-            x_next = self.dynamic_system.step(s, torch.ones(s.shape[0], self.dynamic_system.nu).to(s.device)*u.to(s.device))
-            hs_next = self.h(x_next)
-            hs_next_list.append(hs_next)
+            with torch.no_grad():
+                x_next = self.dynamic_system.step(s, torch.ones(s.shape[0], self.dynamic_system.nu).to(s.device)*u.to(s.device))
+                hs_next = self.h(x_next)
+                hs_next_list.append(hs_next)
         
         hs_next = torch.stack(hs_next_list, dim=1)
         hs_next = torch.max(hs_next, dim=1, keepdim=True).values.detach().squeeze(dim=-1)
@@ -729,9 +730,10 @@ class NeuralNetwork(pl.LightningModule):
         if self.use_h0:
             hs_next_list = []
             for u in self.u_v:
-                x_next = self.dynamic_system.step(s, torch.ones(s.shape[0], self.dynamic_system.nu).to(s.device)*u.to(s.device))
-                hs_next = self.h0(x_next)
-                hs_next_list.append(hs_next)
+                with torch.no_grad():
+                    x_next = self.dynamic_system.step(s, torch.ones(s.shape[0], self.dynamic_system.nu).to(s.device)*u.to(s.device))
+                    hs_next = self.h0(x_next)
+                    hs_next_list.append(hs_next)
 
             hs_next = torch.stack(hs_next_list, dim=1)
             hs_next, index_control = torch.max(hs_next, dim=1, keepdim=True)
@@ -814,7 +816,7 @@ class NeuralNetwork(pl.LightningModule):
 
         ###################################################
 
-        regulation_loss = 50 * F.relu( hs - ( baseline ) ) # * torch.sigmoid(- 10 * baseline) 
+        regulation_loss = coefficients_hji_inadmissible_loss * F.relu( hs - ( baseline ) ) # * torch.sigmoid(- 10 * baseline) 
         # regulation_loss_term = regulation_loss[torch.logical_not(unsafe_mask)].mean()
         # regulation_loss = 1 * F.relu( hs -  (hs.detach() - 0.05)) * torch.sigmoid(- 5 * self.hji_vi_boundary_loss_term ) 
         regulation_loss_term = regulation_loss.mean()
@@ -1697,6 +1699,7 @@ class NeuralNetwork(pl.LightningModule):
     
     def on_train_start(self) -> None:
         print(f"############### Training start #########################")
+        # self.param_init(self.h)
 
     def on_train_epoch_start(self) -> None:
         print("################## the epoch start #####################")

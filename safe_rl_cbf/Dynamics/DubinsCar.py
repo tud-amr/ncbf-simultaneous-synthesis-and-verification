@@ -30,6 +30,7 @@ class DubinsCar(ControlAffineSystem):
     # Number of states and controls
     N_DIMS = 3
     N_CONTROLS = 2
+    N_DISTURBANCES = 0
 
     # State indices
     X = 0
@@ -40,8 +41,8 @@ class DubinsCar(ControlAffineSystem):
     V = 0
     W = 1
 
-    def __init__(self, ns=N_DIMS, nu=N_CONTROLS, dt=0.01):
-        super().__init__(ns, nu, dt)
+    def __init__(self, ns=N_DIMS, nu=N_CONTROLS, nd=N_DISTURBANCES , dt=0.01):
+        super().__init__(ns, nu, nd, dt)
 
 
     def f(self, s: torch.Tensor) -> torch.Tensor:
@@ -74,6 +75,19 @@ class DubinsCar(ControlAffineSystem):
         g[:, DubinsCar.THETA, DubinsCar.W] = 1.0
 
         return g
+
+    def d(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Return the disturbance-independent part of the control-affine dynamics.
+
+        args:
+            x: bs x self.n_dims tensor of state
+
+        returns:
+            d: bs x self.n_dims x self.n_disturbances tensor
+        """
+        return torch.zeros((x.shape[0], self.ns, self.nd), dtype=torch.float).to(x.device)
+
 
     def range_dxdt(self, x_l: torch.Tensor, x_u:torch.Tensor,  u: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """

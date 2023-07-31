@@ -20,12 +20,13 @@ class ControlAffineSystem(ABC):
     useful properties when it comes to designing controllers.
     """
 
-    def __init__(self, ns=2, nu=1, dt=0.01):
+    def __init__(self, ns=2, nu=1, nd=1, dt=0.01):
         super().__init__()
         
-        assert ns > 0 and nu >= 0 and dt > 0
+        assert ns > 0 and nu >= 0 and nd >= 0 and dt > 0
         self.ns = ns
         self.nu = nu
+        self.nd = nd
         self.dt = dt
 
 
@@ -57,6 +58,20 @@ class ControlAffineSystem(ABC):
             g: bs x self.n_dims x self.n_controls tensor
         """
         pass
+
+    @abstractmethod
+    def d(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Return the disturbance-independent part of the control-affine dynamics.
+
+        args:
+            x: bs x self.n_dims tensor of state
+
+        returns:
+            d: bs x self.n_dims x self.n_disturbances tensor
+        """
+        pass
+
     
     @abstractmethod
     def range_dxdt(self, x_range: torch.Tensor, u: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -92,6 +107,17 @@ class ControlAffineSystem(ABC):
 
         self.control_lower_bd = lower_bd
         self.control_upper_bd = upper_bd
+
+    def set_disturbance_limits(self, lower_bd: torch.Tensor,upper_bd: torch.Tensor):
+
+        message = f"lower_bd and upper_bd must the same shape but got {lower_bd.shape} and {upper_bd.shape}"
+        assert lower_bd.shape == upper_bd.shape, message
+        message = f"lower_bd and upper_bd must be tensors of shape ({self.nd}, )"
+        assert lower_bd.shape[0] == self.nd, message
+
+        self.disturbance_lower_bd = lower_bd
+        self.disturbance_upper_bd = upper_bd
+
 
     def set_state_constraints(self, rou):
         """
@@ -138,9 +164,16 @@ class ControlAffineSystem(ABC):
             )
         )
 
-    def dsdt(self, s: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
-        ds = self.f(s) + torch.bmm(self.g(s), u.unsqueeze(dim=-1)).squeeze(dim=-1)
+    def dsdt(self, s: torch.Tensor, u: torch.Tensor, d : torch.Tensor = None) -> torch.Tensor:
+        """
+        Return the state derivative dsdt for a given state and control input.
+        s: (bs, ns)
+        u: (bs, nu)
+        d: (bs, nd)
+        """
 
+        ds = self.f(s) + torch.bmm(self.g(s), u.unsqueeze(dim=-1)).squeeze(dim=-1)
+    
         return ds
 
     def step(self, s: torch.Tensor, u: torch.Tensor, dt=None) -> torch.Tensor:
@@ -179,6 +212,18 @@ class ControlAffineSystem(ABC):
 
         return (lower_limit, upper_limit)
     
+    @property
+    def disturbance_limits(self) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Return a tuple ( upper: (nd,), lower: (nd,) ) describing the range of allowable disturbance
+        limits for this system
+        """
+        # define upper and lower limits based around the nominal equilibrium input
+        upper_limit = self.disturbance_upper_bd
+        lower_limit = self.disturbance_lower_bd
+
+        return (lower_limit, upper_limit)
+
     @property
     def K(self) -> torch.Tensor:
         """

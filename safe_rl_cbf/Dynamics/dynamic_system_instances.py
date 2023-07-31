@@ -121,7 +121,7 @@ dubins_car.set_nominal_state_constraints(rou_n)
 
 ########################## create dubins car rotate object ######################
 
-dubins_car_rotate = DubinsCarRotate(v=0.2)
+dubins_car_rotate = DubinsCarRotate(v=0.4)
 
 domain_lower_bd = torch.Tensor([-1, -1, -4]).float()
 domain_upper_bd = torch.Tensor([9, 9, 4]).float()
@@ -134,8 +134,8 @@ def rou(s: torch.Tensor) -> torch.Tensor:
     rou_2 = torch.unsqueeze( - s[:, 0] + 8, dim=1)
     rou_3 = torch.unsqueeze(s[:, 1] + 0, dim=1)
     rou_4 = torch.unsqueeze( -s[:, 1] + 8, dim=1)
-    rou_5 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1.5
-    return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_5) ) 
+    rou_5 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1.8
+    return torch.hstack( (rou_1, rou_2, rou_3, rou_4) ) 
 
 def rou_n(s: torch.Tensor) -> torch.Tensor:
     s_norm = torch.norm(s, dim=1, keepdim=True)
@@ -196,7 +196,7 @@ def rou(s: torch.Tensor) -> torch.Tensor:
     rou_2 = torch.unsqueeze( - s[:, 0] + 8, dim=1)
     rou_3 = torch.unsqueeze(s[:, 1] + 0, dim=1)
     rou_4 = torch.unsqueeze( -s[:, 1] + 8, dim=1)
-    rou_5 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1.4
+    rou_5 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1.8
 
     return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_5) ) 
 

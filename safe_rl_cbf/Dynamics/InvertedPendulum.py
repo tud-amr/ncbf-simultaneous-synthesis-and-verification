@@ -25,6 +25,8 @@ class InvertedPendulum(ControlAffineSystem):
 
     representing the torque applied.
 
+    There is no disturbance input.
+
     The system is parameterized by
         m: mass
         L: length of the pole
@@ -34,6 +36,7 @@ class InvertedPendulum(ControlAffineSystem):
     # Number of states and controls
     N_DIMS = 2
     N_CONTROLS = 1
+    N_DISTURBANCE = 0
 
     # State indices
     THETA = 0
@@ -41,19 +44,19 @@ class InvertedPendulum(ControlAffineSystem):
     # Control indices
     U = 0
 
-    def __init__(self, ns=N_DIMS, nu=N_CONTROLS, dt=0.01, m=1.0, L=1.0, b=0.1):
-        super().__init__(ns, nu, dt)
+    def __init__(self, ns=N_DIMS, nu=N_CONTROLS, nd=N_DISTURBANCE, dt=0.01, m=1.0, L=1.0, b=0.1):
+        super().__init__(ns, nu, nd, dt)
         self.m = m
         self.L = L
         self.b = b
         self.gravity = 9.81
 
-        A = np.array([[0, 1], [0, -self.b/(self.m * self.L**2)]]).reshape((2,2))
-        B = np.array([0, 1/(self.m * self.L **2)]).reshape((self.ns, self.nu))
-        Q = np.eye(self.ns)
-        R = np.eye(self.nu)
-        K, _, _ = control.lqr(A, B, Q, R)
-        self.K_lqr = torch.from_numpy(K).float()
+        # A = np.array([[0, 1], [0, -self.b/(self.m * self.L**2)]]).reshape((2,2))
+        # B = np.array([0, 1/(self.m * self.L **2)]).reshape((self.ns, self.nu))
+        # Q = np.eye(self.ns)
+        # R = np.eye(self.nu)
+        # K, _, _ = control.lqr(A, B, Q, R)
+        # self.K_lqr = torch.from_numpy(K).float()
 
     def f(self, s: torch.Tensor) -> torch.Tensor:
         batch_size = s.shape[0]
@@ -95,6 +98,24 @@ class InvertedPendulum(ControlAffineSystem):
         g[:, InvertedPendulum.THETA_DOT, InvertedPendulum.U] = 1 / (self.m * self.L ** 2 / 3)
 
         return g
+
+    def d(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Return the disturbance-independent part of the control-affine dynamics.
+
+        args:
+            x: bs x self.n_dims tensor of state
+            params: a dictionary giving the parameter values for the system. If None,
+                    default to the nominal parameters used at initialization
+        returns:
+            d: bs x self.n_dims x self.n_disturbance tensor
+        """
+        batch_size = x.shape[0]
+        d = torch.zeros((batch_size, self.ns, self.nd))
+        d = d.type_as(x)
+        
+        return d
+
 
     def range_dxdt(self, x_l: torch.Tensor, x_u:torch.Tensor,  u: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """

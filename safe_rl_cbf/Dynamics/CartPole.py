@@ -35,6 +35,7 @@ class CartPole(ControlAffineSystem):
     # Number of states and controls
     N_DIMS = 4
     N_CONTROLS = 1
+    N_DISTURBANCES = 0
 
     # State indices
     X = 0
@@ -44,8 +45,8 @@ class CartPole(ControlAffineSystem):
     # Control indices
     U = 0
 
-    def __init__(self, ns=N_DIMS, nu=N_CONTROLS, dt=0.01, m_c=1.0, m_p=0.1, L=0.5):
-        super().__init__(ns, nu, dt)
+    def __init__(self, ns=N_DIMS, nu=N_CONTROLS, nd=N_DISTURBANCES, dt=0.01, m_c=1.0, m_p=0.1, L=0.5):
+        super().__init__(ns, nu, nd, dt)
         self.masscart = m_c
         self.masspole = m_p
         self.total_mass = self.masspole + self.masscart
@@ -116,6 +117,11 @@ class CartPole(ControlAffineSystem):
 
 
         return g
+
+        
+    def d(self, s: torch.Tensor) -> torch.Tensor:
+        return torch.zeros((s.shape[0], self.ns, self.nd), dtype=torch.float).to(s.device)
+
 
     def range_dxdt(self, x_l: torch.Tensor, x_u:torch.Tensor,  u: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """

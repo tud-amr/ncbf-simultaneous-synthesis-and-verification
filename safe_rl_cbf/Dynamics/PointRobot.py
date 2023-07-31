@@ -30,6 +30,7 @@ class PointRobot(ControlAffineSystem):
     # Number of states and controls
     N_DIMS = 4
     N_CONTROLS = 2
+    N_DISTURBANCES = 0
 
     # State indices
     X = 0
@@ -41,8 +42,8 @@ class PointRobot(ControlAffineSystem):
     AX = 0
     AY = 1
 
-    def __init__(self, ns=N_DIMS, nu=N_CONTROLS, dt=0.01):
-        super().__init__(ns, nu, dt)
+    def __init__(self, ns=N_DIMS, nu=N_CONTROLS, nd=N_DISTURBANCES , dt=0.01):
+        super().__init__(ns, nu, nd, dt)
 
 
     def f(self, s: torch.Tensor) -> torch.Tensor:
@@ -79,6 +80,22 @@ class PointRobot(ControlAffineSystem):
         g[:, PointRobot.VY, PointRobot.AY] = 1
 
         return g
+
+    def d(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Return the disturbance-independent part of the control-affine dynamics.
+
+        args:
+            x: bs x self.n_dims tensor of state
+
+        returns:
+            d: bs x self.n_dims x self.n_disturbances tensor
+        """
+        batch_size = x.shape[0]
+        d = torch.zeros((batch_size, self.ns, self.nd))
+        d = d.type_as(x)
+
+        return d
 
     def range_dxdt(self, x_l: torch.Tensor, x_u:torch.Tensor,  u: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """

@@ -10,8 +10,8 @@ import numpy as np
 from safe_rl_cbf.Dynamics.control_affine_system import ControlAffineSystem
 
 class Car(ControlAffineSystem):
-    def __init__(self, ns=2, nu=1, dt=0.01):
-        super().__init__(ns, nu, dt)
+    def __init__(self, ns=2, nu=1, nd=0, dt=0.01):
+        super().__init__(ns, nu, nd, dt)
         self.K_lqr = torch.tensor([[1.0, 2.23606]]).float()
 
         
@@ -30,6 +30,9 @@ class Car(ControlAffineSystem):
         old_result =  torch.tensor([0, m], dtype=torch.float).reshape((1,2)).to(s.device) * torch.ones((s.shape[0], 2 ), dtype=torch.float).to(s.device)
         result =  torch.tensor([0, m], dtype=torch.float).reshape((self.ns, self.nu)).unsqueeze(dim=0).to(s.device) * torch.ones((s.shape[0], self.ns, self.nu), dtype=torch.float).to(s.device)
         return result
+    
+    def d(self, s):
+        return torch.zeros((s.shape[0], self.ns, self.nd), dtype=torch.float).to(s.device)
 
     def range_dxdt(self, x_l: torch.Tensor, x_u:torch.Tensor,  u: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
