@@ -121,7 +121,7 @@ dubins_car.set_nominal_state_constraints(rou_n)
 
 ########################## create dubins car rotate object ######################
 
-dubins_car_rotate = DubinsCarRotate(v=0.4)
+dubins_car_rotate = DubinsCarRotate(v=0.4, dt=0.05)
 
 domain_lower_bd = torch.Tensor([-1, -1, -4]).float()
 domain_upper_bd = torch.Tensor([9, 9, 4]).float()

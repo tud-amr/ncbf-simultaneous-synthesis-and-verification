@@ -43,6 +43,7 @@ class DubinsCar(ControlAffineSystem):
 
     def __init__(self, ns=N_DIMS, nu=N_CONTROLS, nd=N_DISTURBANCES , dt=0.01):
         super().__init__(ns, nu, nd, dt)
+        self.period_state_index = [DubinsCar.THETA]
 
 
     def f(self, s: torch.Tensor) -> torch.Tensor:

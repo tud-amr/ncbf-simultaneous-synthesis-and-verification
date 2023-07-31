@@ -146,8 +146,8 @@ class NeuralNetwork(pl.LightningModule):
         self.performance_lose_name = ['safe_region_term', 'descent_boundary_term', 'hji_vi_boundary_loss_term']
 
         self.coefficient_for_performance_loss = 1
-        self.coefficient_for_inadmissible_state_loss = 2
-        self.coefficients_for_descent_loss = 2
+        self.coefficient_for_inadmissible_state_loss = 5
+        self.coefficients_for_descent_loss = 5
 
         self.hji_vi_boundary_loss_term = torch.tensor([0.0])
         self.hji_vi_descent_loss_term = torch.tensor([0.0])

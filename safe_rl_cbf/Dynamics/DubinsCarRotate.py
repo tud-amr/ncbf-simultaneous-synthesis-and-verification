@@ -36,13 +36,16 @@ class DubinsCarRotate(ControlAffineSystem):
     X = 0
     Y = 1
     THETA = 2
+
+  
     
     # Control indices
     W = 0
 
     def __init__(self, ns=N_DIMS, nu=N_CONTROLS, nd=N_DISTURBANCES,  v=0.5, dt=0.01):
-        self.v = v
         super().__init__(ns, nu, nd, dt)
+        self.v = v
+        self.period_state_index = [DubinsCarRotate.THETA]
 
 
     def f(self, s: torch.Tensor) -> torch.Tensor:
@@ -97,12 +100,12 @@ class DubinsCarRotate(ControlAffineSystem):
         return d
 
 
-    def step(self, s: torch.Tensor, u: torch.Tensor, dt=None) -> torch.Tensor:
-        s_next = super().step(s, u, dt)
+    # def step(self, s: torch.Tensor, u: torch.Tensor =None, d: torch.Tensor = None , dt=None) -> torch.Tensor:
+    #     s_next = super().step(s, u, d, dt)
 
-        s_next[:, DubinsCarRotate.THETA] = self.normalize_angle(s_next[:, DubinsCarRotate.THETA])
+    #     s_next[:, DubinsCarRotate.THETA] = self.normalize_angle(s_next[:, DubinsCarRotate.THETA])
         
-        return s_next
+    #     return s_next
 
     def range_dxdt(self, x_l: torch.Tensor, x_u:torch.Tensor,  u: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -170,7 +173,7 @@ if __name__ == "__main__":
     dubins_car_rotate.set_nominal_state_constraints(rou_n)
 
     
-    x = torch.tensor([5, 5, 0], dtype=torch.float).reshape(1, dubins_car_rotate.ns)
+    x = torch.tensor([5, 5, 4], dtype=torch.float).reshape(1, dubins_car_rotate.ns)
     # x = torch.rand(3,3, dtype=torch.float)
     u_ref = torch.rand(1, 1, dtype=torch.float)
     

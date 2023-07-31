@@ -29,6 +29,8 @@ class ControlAffineSystem(ABC):
         self.nd = nd
         self.dt = dt
 
+        self.period_state_index = []
+
         self.domain_upper_bd = None
         self.domain_lower_bd = None
         self.control_lower_bd = None
@@ -206,6 +208,11 @@ class ControlAffineSystem(ABC):
             s_next = s + ds * self.dt
         else:
             s_next = s + ds * dt
+
+
+        for i in self.period_state_index:
+            s_next[:, i] = self.normalize_angle(s_next[:, i])
+        
         return s_next
 
     def normalize_angle(self, theta):
