@@ -74,10 +74,22 @@ class ControlAffineSystem(ABC):
 
 
     def set_domain_limits(self, lower_bd: torch.Tensor,upper_bd: torch.Tensor):
+        
+        message = f"lower_bd and upper_bd must the same shape but got {lower_bd.shape} and {upper_bd.shape}"
+        assert lower_bd.shape == upper_bd.shape, message
+        message = f"lower_bd and upper_bd must be tensors of shape ({self.ns,},)"
+        assert lower_bd.shape[0] == self.ns, message
+
         self.domain_lower_bd = lower_bd
         self.domain_upper_bd = upper_bd
     
     def set_control_limits(self, lower_bd: torch.Tensor,upper_bd: torch.Tensor):
+
+        message = f"lower_bd and upper_bd must the same shape but got {lower_bd.shape} and {upper_bd.shape}"
+        assert lower_bd.shape == upper_bd.shape, message
+        message = f"lower_bd and upper_bd must be tensors of shape ({self.nu}, )"
+        assert lower_bd.shape[0] == self.nu, message
+
         self.control_lower_bd = lower_bd
         self.control_upper_bd = upper_bd
 
@@ -139,6 +151,8 @@ class ControlAffineSystem(ABC):
             s_next = s + ds * dt
         return s_next
 
+    def normalize_angle(self, theta):
+        return torch.atan2(torch.sin(theta), torch.cos(theta))
 
     @property
     def domain_limits(self) -> Tuple[torch.Tensor, torch.Tensor]:

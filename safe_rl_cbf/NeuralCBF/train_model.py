@@ -13,7 +13,7 @@ from matplotlib.ticker import LinearLocator
 
 from safe_rl_cbf.NeuralCBF.MyNeuralNetwork import *
 # from ValueFunctionNeuralNetwork import *
-from safe_rl_cbf.Dynamics.dynamic_system_instances import car1, inverted_pendulum_1, cart_pole_1, dubins_car, dubins_car_acc, point_robot
+from safe_rl_cbf.Dynamics.dynamic_system_instances import inverted_pendulum_1, dubins_car, dubins_car_rotate ,dubins_car_acc, point_robot
 from safe_rl_cbf.Dataset.TrainingDataModule import TrainingDataModule
 
 
@@ -21,27 +21,29 @@ def extract_number(f):
     s = re.findall("\d+$",f)
     return (int(s[0]) if s else -1,f)
 
+########################### hyperparameters #############################
 
 fine_tune = False
-system = point_robot
+system = dubins_car_rotate
+default_root_dir = "./logs/CBF_logs/dubins_car_rotate"
+
+########################## start training ###############################
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print('Using {} device'.format(device))
 
 data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=512, training_points_num=int(1e6))
 
-default_root_dir = "./logs/CBF_logs/point_robot"
-
 # checkpoint_callback = ModelCheckpoint(dirpath=default_root_dir, save_top_k=1, monitor="Total_loss/train")
 
 if not fine_tune:
 
 
-    # NN = NeuralNetwork(dynamic_system=system, data_module=data_module, require_grad_descent_loss=True)
-    NN = NeuralNetwork.load_from_checkpoint("logs/CBF_logs/point_robot/lightning_logs/version_0/checkpoints/epoch=72-step=11899.ckpt",dynamic_system=system, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
+    NN = NeuralNetwork(dynamic_system=system, data_module=data_module, require_grad_descent_loss=True)
+    # NN = NeuralNetwork.load_from_checkpoint("logs/CBF_logs/point_robot/lightning_logs/version_0/checkpoints/epoch=72-step=11899.ckpt",dynamic_system=system, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
    
-    NN.training_stage = 1
-    NN.set_previous_cbf(NN.h)
+    NN.training_stage = 0
+    # NN.set_previous_cbf(NN.h)
 
     trainer = pl.Trainer(
         accelerator = "gpu",
