@@ -106,19 +106,21 @@ class NeuralNetwork(pl.LightningModule):
         dir = torch.tensor([0, 1])
         combine = list(product(dir, repeat=self.dynamic_system.nu))
         self.u_v = []
-        for i in range(len(combine)):
-            coefficent = torch.tensor(combine[i])
-            u_i = coefficent * u_upper + (1 - coefficent) * u_lower
-            self.u_v.append(u_i.reshape(1, -1))
+        if self.dynamic_system.nu != 0:
+            for i in range(len(combine)):
+                coefficent = torch.tensor(combine[i])
+                u_i = coefficent * u_upper + (1 - coefficent) * u_lower
+                self.u_v.append(u_i.reshape(1, -1))
 
         d_lower, d_upper = self.dynamic_system.disturbance_limits
         dir = torch.tensor([0, 1])
         combine = list(product(dir, repeat=self.dynamic_system.nd))
         self.d_v = []
-        for i in range(len(combine)):
-            coefficent = torch.tensor(combine[i])
-            d_i = coefficent * d_upper + (1 - coefficent) * d_lower
-            self.d_v.append(d_i.reshape(1, -1))
+        if self.dynamic_system.nd != 0:
+            for i in range(len(combine)):
+                coefficent = torch.tensor(combine[i])
+                d_i = coefficent * d_upper + (1 - coefficent) * d_lower
+                self.d_v.append(d_i.reshape(1, -1))
         
         
         # self.u_v = torch.cat(self.u_v, dim=0)
@@ -395,37 +397,43 @@ class NeuralNetwork(pl.LightningModule):
 
         safe_mask = torch.logical_not(unsafe_mask)
 
-        # find the action that maximize the hamiltonian
-        hs_next_list = []
-        for u in self.u_v:
-            with torch.no_grad():
-                x_next = self.dynamic_system.step(s, u=torch.ones(s.shape[0], self.dynamic_system.nu).to(s.device)*u.to(s.device))
-                hs_next = self.h(x_next)
-                hs_next_list.append(hs_next)
+        if self.dynamic_system.nu != 0:
+            # find the action that maximize the hamiltonian
+            hs_next_list = []
+            for u in self.u_v:
+                with torch.no_grad():
+                    x_next = self.dynamic_system.step(s, u=torch.ones(s.shape[0], self.dynamic_system.nu).to(s.device)*u.to(s.device))
+                    hs_next = self.h(x_next)
+                    hs_next_list.append(hs_next)
 
-        hs_next = torch.stack(hs_next_list, dim=1)
-        _ , index_control = torch.max(hs_next, dim=1, keepdim=True)
+            hs_next = torch.stack(hs_next_list, dim=1)
+            _ , index_control = torch.max(hs_next, dim=1, keepdim=True)
 
-        index_control = index_control.squeeze()
-        u_v = torch.cat(self.u_v, dim=0)
-        u_max = u_v[index_control]
-        u_max = u_max.to(s.device)
+            index_control = index_control.squeeze()
+            u_v = torch.cat(self.u_v, dim=0)
+            u_max = u_v[index_control]
+            u_max = u_max.to(s.device)
+        else:
+            u_max = None
         
-        # find the disturbance that minimize the hamiltonian
-        hs_next_list = []
-        for d in self.d_v:
-            with torch.no_grad():
-                x_next = self.dynamic_system.step(s, d=torch.ones(s.shape[0], self.dynamic_system.nd).to(s.device)*d.to(s.device))
-                hs_next = self.h(x_next)
-                hs_next_list.append(hs_next)
+        if self.dynamic_system.nd != 0:
+            # find the disturbance that minimize the hamiltonian
+            hs_next_list = []
+            for d in self.d_v:
+                with torch.no_grad():
+                    x_next = self.dynamic_system.step(s, d=torch.ones(s.shape[0], self.dynamic_system.nd).to(s.device)*d.to(s.device))
+                    hs_next = self.h(x_next)
+                    hs_next_list.append(hs_next)
 
-        hs_next = torch.stack(hs_next_list, dim=1)
-        _, index_control = torch.min(hs_next, dim=1, keepdim=True)
+            hs_next = torch.stack(hs_next_list, dim=1)
+            _, index_control = torch.min(hs_next, dim=1, keepdim=True)
 
-        index_control = index_control.squeeze()
-        d_v = torch.cat(self.d_v, dim=0)
-        d_min = d_v[index_control]
-        d_min = d_min.to(s.device)
+            index_control = index_control.squeeze()
+            d_v = torch.cat(self.d_v, dim=0)
+            d_min = d_v[index_control]
+            d_min = d_min.to(s.device)
+        else:
+            d_min = None
         
 
         # compute the hamiltonian
@@ -769,37 +777,54 @@ class NeuralNetwork(pl.LightningModule):
         Lf_V, Lg_V, Ld_V= self.V_lie_derivatives(s, gradh)
 
         if self.use_h0:
-            # find the action that maximize the hamiltonian
-            hs_next_list = []
-            for u in self.u_v:
-                with torch.no_grad():
-                    x_next = self.dynamic_system.step(s, torch.ones(s.shape[0], self.dynamic_system.nu).to(s.device)*u.to(s.device))
-                    hs_next = self.h0(x_next)
-                    hs_next_list.append(hs_next)
+            if self.dynamic_system.nu != 0:
+                # find the action that maximize the hamiltonian
+                hs_next_list = []
+                for u in self.u_v:
+                    with torch.no_grad():
+                        x_next = self.dynamic_system.step(s, torch.ones(s.shape[0], self.dynamic_system.nu).to(s.device)*u.to(s.device))
+                        hs_next = self.h0(x_next)
+                        hs_next_list.append(hs_next)
 
-            hs_next = torch.stack(hs_next_list, dim=1)
-            _, index_control = torch.max(hs_next, dim=1, keepdim=True)
+                hs_next = torch.stack(hs_next_list, dim=1)
+                _, index_control = torch.max(hs_next, dim=1, keepdim=True)
 
-            index_control = index_control.squeeze()
-            u_v = torch.cat(self.u_v, dim=0)
-            u_qp = u_v[index_control]
-            u_qp = u_qp.to(s.device)
+                index_control = index_control.squeeze()
+                u_v = torch.cat(self.u_v, dim=0)
+                u_qp = u_v[index_control]
+                u_qp = u_qp.to(s.device)
 
-            # find the disturbance that minimize the hamiltonian
-            hs_next_list = []
-            for d in self.d_v:
-                with torch.no_grad():
-                    x_next = self.dynamic_system.step(s, d=torch.ones(s.shape[0], self.dynamic_system.nd).to(s.device)*d.to(s.device))
-                    hs_next = self.h0(x_next)
-                    hs_next_list.append(hs_next)
+                control_term = torch.bmm(
+                            Lg_V[:, :].unsqueeze(1),
+                            u_qp.reshape(-1, self.dynamic_system.nu, 1)
+                        ) 
+            else:
+                control_term = 0
 
-            hs_next = torch.stack(hs_next_list, dim=1)
-            _, index_control = torch.min(hs_next, dim=1, keepdim=True)
+            if self.dynamic_system.nd != 0:
+                # find the disturbance that minimize the hamiltonian
+                hs_next_list = []
+                for d in self.d_v:
+                    with torch.no_grad():
+                        x_next = self.dynamic_system.step(s, d=torch.ones(s.shape[0], self.dynamic_system.nd).to(s.device)*d.to(s.device))
+                        hs_next = self.h0(x_next)
+                        hs_next_list.append(hs_next)
 
-            index_control = index_control.squeeze()
-            d_v = torch.cat(self.d_v, dim=0)
-            d_min = d_v[index_control]
-            d_min = d_min.to(s.device)
+                hs_next = torch.stack(hs_next_list, dim=1)
+                _, index_control = torch.min(hs_next, dim=1, keepdim=True)
+
+                index_control = index_control.squeeze()
+                d_v = torch.cat(self.d_v, dim=0)
+                d_min = d_v[index_control]
+                d_min = d_min.to(s.device)
+
+                disturbance_term =  torch.bmm(
+                            Ld_V[:, :].unsqueeze(1),
+                            d_min.reshape(-1, self.dynamic_system.nd, 1)
+                        )
+            else:
+                disturbance_term = 0
+
         else:
             u_min, u_max = self.dynamic_system.control_limits
         
@@ -811,16 +836,7 @@ class NeuralNetwork(pl.LightningModule):
             u_qp = (Lg_V >= 0)*u_max.to(s.device) + (Lg_V < 0)*u_min.to(s.device)
         
         # Use the dynamics to compute the derivative of V
-        Vdot =  Lf_V[:, :].unsqueeze(1) + \
-                torch.bmm(
-                            Lg_V[:, :].unsqueeze(1),
-                            u_qp.reshape(-1, self.dynamic_system.nu, 1)
-                        ) + \
-                torch.bmm(
-                            Ld_V[:, :].unsqueeze(1),
-                            d_min.reshape(-1, self.dynamic_system.nd, 1)
-                        )
-                        
+        Vdot =  Lf_V[:, :].unsqueeze(1) + control_term + disturbance_term
                 
         Vdot = Vdot.reshape(hs.shape)
 

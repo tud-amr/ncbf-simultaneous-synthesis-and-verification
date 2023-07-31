@@ -29,6 +29,12 @@ class ControlAffineSystem(ABC):
         self.nd = nd
         self.dt = dt
 
+        self.domain_upper_bd = None
+        self.domain_lower_bd = None
+        self.control_lower_bd = None
+        self.control_upper_bd = None
+        self.disturbance_lower_bd = None
+        self.disturbance_upper_bd = None
 
     @abstractmethod
     def f(self, s: torch.Tensor) -> torch.Tensor:
