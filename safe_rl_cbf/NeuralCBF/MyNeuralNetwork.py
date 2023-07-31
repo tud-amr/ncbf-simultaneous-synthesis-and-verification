@@ -895,10 +895,10 @@ class NeuralNetwork(pl.LightningModule):
 
         ###################################################
 
-        regulation_loss = coefficients_hji_inadmissible_loss * F.relu( hs - ( baseline ) ) # * torch.sigmoid(- 10 * baseline) 
+        regulation_loss = 50 * F.relu( hs - ( baseline ) ) # * torch.sigmoid(- 10 * baseline) 
         # regulation_loss_term = regulation_loss[torch.logical_not(unsafe_mask)].mean()
         # regulation_loss = 1 * F.relu( hs -  (hs.detach() - 0.05)) * torch.sigmoid(- 5 * self.hji_vi_boundary_loss_term ) 
-        regulation_loss_term = regulation_loss.mean()
+        regulation_loss_term = regulation_loss[unsafe_mask].mean()
         loss.append(("regulation_loss_term", regulation_loss_term))
 
 
