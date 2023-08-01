@@ -130,10 +130,10 @@ control_lower_bd = torch.Tensor([-1]).float()
 control_upper_bd = -control_lower_bd
     
 def rou(s: torch.Tensor) -> torch.Tensor:
-    rou_1 = torch.unsqueeze(s[:, 0] + 0, dim=1)
-    rou_2 = torch.unsqueeze( - s[:, 0] + 8, dim=1)
-    rou_3 = torch.unsqueeze(s[:, 1] + 0, dim=1)
-    rou_4 = torch.unsqueeze( -s[:, 1] + 8, dim=1)
+    rou_1 = torch.unsqueeze(s[:, 0] - 0.8, dim=1)
+    rou_2 = torch.unsqueeze( - s[:, 0] + 7.2, dim=1)
+    rou_3 = torch.unsqueeze(s[:, 1] - 0.8, dim=1)
+    rou_4 = torch.unsqueeze( -s[:, 1] + 7.2, dim=1)
     rou_5 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1.8
     return torch.hstack( (rou_1, rou_2, rou_3, rou_4) ) 
 

@@ -60,7 +60,7 @@ class NeuralNetwork(pl.LightningModule):
         fine_tune: bool = False,
         primal_learning_rate: float = 1e-3,
         gamma: float = 0.9,
-        clf_lambda: float = 1,
+        clf_lambda: float = 0.5,
         clf_relaxation_penalty: float = 50.0,
         ):
 
@@ -142,7 +142,7 @@ class NeuralNetwork(pl.LightningModule):
                                        "violation_states": [], "violation_value": []}
     
         self.descent_loss_name = ['descent_term_linearized', 'descent_term_simulated', 'hji_vi_descent_loss_term']
-        self.safety_loss_name = ['unsafe_region_term','unsafe_area_hji_term', 'regulation_loss_term']
+        self.safety_loss_name = ['unsafe_region_term','unsafe_area_hji_term', 'regulation_loss_term', 'below_violation']
         self.performance_lose_name = ['safe_region_term', 'descent_boundary_term', 'hji_vi_boundary_loss_term']
 
         self.coefficient_for_performance_loss = 1
@@ -393,7 +393,7 @@ class NeuralNetwork(pl.LightningModule):
         # Compute loss to encourage satisfaction of the following conditions...
         loss = []
 
-        baseline = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values.detach() - 0.3
+        baseline = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values.detach()
 
         safe_mask = torch.logical_not(unsafe_mask)
 
@@ -753,11 +753,11 @@ class NeuralNetwork(pl.LightningModule):
         
         # curricumlum_learning_factor = max(1 - self.current_epoch / (self.trainer.max_epochs -200), -0.1)
         # positive_mask = torch.logical_and((hs >= -0.2), hs >= curricumlum_learning_factor * self.max_value_function.to(s.device)) 
-        positive_mask = (hs >= -0.75)
+        positive_mask = (hs >= -0.75) 
          
         #####################################################
         
-        baseline = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values - 0.3
+        baseline = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values.detach()
         
         value_fun_violation = (baseline -  hs) * 1
         
@@ -895,7 +895,7 @@ class NeuralNetwork(pl.LightningModule):
 
         ###################################################
 
-        regulation_loss = 50 * F.relu( hs - ( baseline ) ) # * torch.sigmoid(- 10 * baseline) 
+        regulation_loss = 50 * F.relu( hs - baseline ) # * torch.sigmoid(- 10 * baseline) 
         # regulation_loss_term = regulation_loss[torch.logical_not(unsafe_mask)].mean()
         # regulation_loss = 1 * F.relu( hs -  (hs.detach() - 0.05)) * torch.sigmoid(- 5 * self.hji_vi_boundary_loss_term ) 
         regulation_loss_term = regulation_loss[unsafe_mask].mean()
@@ -2142,7 +2142,7 @@ class NeuralNetwork(pl.LightningModule):
         batch_dict["shape_h"]["val"] = h_x
 
         # record unsafe_violation
-        h_x_neg_mask = h_x < 0
+        h_x_neg_mask = h_x < -2
         h_x_pos_mask = h_x > 0
         unit_index = torch.hstack((unsafe_mask.unsqueeze(dim=1), h_x_pos_mask))
 

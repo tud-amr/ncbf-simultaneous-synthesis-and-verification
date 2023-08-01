@@ -25,7 +25,7 @@ def extract_number(f):
 
 fine_tune = False
 system = dubins_car_rotate
-default_root_dir = "./logs/CBF_logs/dubins_car_rotate"
+default_root_dir = "./logs/CBF_logs/dubins_car_rotate4"
 
 ########################## start training ###############################
 
@@ -39,11 +39,12 @@ data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=51
 if not fine_tune:
 
 
-    NN = NeuralNetwork(dynamic_system=system, data_module=data_module, require_grad_descent_loss=True)
-    # NN = NeuralNetwork.load_from_checkpoint("logs/CBF_logs/point_robot/lightning_logs/version_0/checkpoints/epoch=72-step=11899.ckpt",dynamic_system=system, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
+    # NN = NeuralNetwork(dynamic_system=system, data_module=data_module, require_grad_descent_loss=True)
+    NN0 =  NeuralNetwork.load_from_checkpoint("logs/CBF_logs/dubins_car_rotate4/lightning_logs/version_0/checkpoints/epoch=51-step=8476.ckpt",dynamic_system=system, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
+    NN = NeuralNetwork.load_from_checkpoint("logs/CBF_logs/dubins_car_rotate4/lightning_logs/version_1/checkpoints/epoch=42-step=7009.ckpt",dynamic_system=system, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
    
-    NN.training_stage = 0
-    # NN.set_previous_cbf(NN.h)
+    NN.training_stage = 1
+    NN.set_previous_cbf(NN0.h)
 
     trainer = pl.Trainer(
         accelerator = "gpu",
@@ -61,7 +62,7 @@ if not fine_tune:
     # trainer.fit(NN, ckpt_path="CBF_logs/robust_training_maximum_without_nominal_controller/lightning_logs/version_3/checkpoints/epoch=44-step=1935.ckpt")
     trainer.fit(NN)
 
-    torch.save(NN.data_module.s_training, "s_training.pt")
+    # torch.save(NN.data_module.s_training, "s_training.pt")
 
 else:
     
