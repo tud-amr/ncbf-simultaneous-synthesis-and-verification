@@ -17,7 +17,7 @@ env = PointRobotEnv(render_sim=render_sim)
 # model.set_env(env)
 
 data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=512, training_points_num=int(1e6))
-NN = NeuralNetwork.load_from_checkpoint("saved_models/point_robot/checkpoints/epoch=68-step=11247.ckpt", dynamic_system=system, data_module=data_module )
+NN = NeuralNetwork.load_from_checkpoint("saved_models/point_robot_dist/checkpoints/epoch=67-step=11084.ckpt", dynamic_system=system, data_module=data_module )
 NN.to(device)
 
 env.set_barrier_function(NN)
@@ -28,12 +28,14 @@ obs = env.reset()
 try:
     while True:
         # action, _ = model.predict(obs) 
-        action = np.array([0.1, 0.1])
+        action = np.array([0.3, 0.3])
         obs, reward, done, info = env.step(action)
         if render_sim is True:
             env.render()
         if done:
             obs = env.reset()
-        
+        if env.current_time_step > 700:
+            print("Time out")
+            obs = env.reset()
 finally:
     env.close()

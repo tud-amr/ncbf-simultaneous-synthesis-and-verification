@@ -109,7 +109,7 @@ class PointRobotEnv(gym.Env):
     def step(self, action):
         
         reward = 0
-        action = action / 5
+        action = action 
 
         if self.use_cbf:
             if self.h is None:
@@ -165,6 +165,7 @@ class PointRobotEnv(gym.Env):
             done = True
         elif np.abs(obs[2]) == 1 or np.abs(obs[3]) == 1:
             # reach the maximum velocity or angular velocity
+            print("reach the maximum velocity or angular velocity")
             reward = -10
             done = True
 
