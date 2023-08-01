@@ -270,9 +270,14 @@ def rou(s: torch.Tensor) -> torch.Tensor:
     rou_4 = torch.unsqueeze( -s[:, 1] + 7.7, dim=1)
     rou_5 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1.8
     
-    rou_6 = torch.norm(s[:, 0:2] - s[:, 4:6], dim=1, keepdim=True) - 0.6 
+    rou_6 = torch.norm(s[:, 0:2] - s[:, 4:6], dim=1, keepdim=True) - 0.7
 
-    return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_5, rou_6) ) 
+    rou_7 = torch.unsqueeze(s[:, 2] + 1, dim=1)
+    rou_8 = torch.unsqueeze( - s[:, 2] + 1, dim=1)
+    rou_9 = torch.unsqueeze(s[:, 3] + 1, dim=1)
+    rou_10 = torch.unsqueeze( -s[:, 3] + 1, dim=1)
+
+    return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_5, rou_6, rou_7, rou_8, rou_9, rou_10) )
 
 def rou_n(s: torch.Tensor) -> torch.Tensor:
     s_norm = torch.norm(s, dim=1)
