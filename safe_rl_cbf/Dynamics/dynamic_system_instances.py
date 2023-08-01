@@ -6,6 +6,7 @@ from safe_rl_cbf.Dynamics.DubinsCarRotate import DubinsCarRotate
 from safe_rl_cbf.Dynamics.DubinsCarAcc import DubinsCarAcc
 from safe_rl_cbf.Dynamics.PointRobot import PointRobot
 from safe_rl_cbf.Dynamics.PointRobotDisturbance import PointRobotDisturbance
+from safe_rl_cbf.Dynamics.PointRobotsDisturbance import PointRobotsDisturbance
 import torch
 
 ####################### create an one-D car object ######################
@@ -230,7 +231,13 @@ def rou(s: torch.Tensor) -> torch.Tensor:
     rou_3 = torch.unsqueeze(s[:, 1] - 0.3, dim=1)
     rou_4 = torch.unsqueeze( -s[:, 1] + 7.7, dim=1)
     rou_5 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1.8
-    return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_5) ) 
+    
+    rou_6 = torch.unsqueeze(s[:, 2] + 1, dim=1)
+    rou_7 = torch.unsqueeze( - s[:, 2] + 1, dim=1)
+    rou_8 = torch.unsqueeze(s[:, 3] + 1, dim=1)
+    rou_9 = torch.unsqueeze( -s[:, 3] + 1, dim=1)
+    
+    return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_5, rou_6, rou_7, rou_8, rou_9) ) 
 
 def rou_n(s: torch.Tensor) -> torch.Tensor:
     s_norm = torch.norm(s, dim=1, keepdim=True)
@@ -242,3 +249,38 @@ point_robot_dis.set_control_limits(control_lower_bd, control_upper_bd)
 point_robot_dis.set_disturbance_limits(disturbance_lower_bd, disturbance_upper_bd)
 point_robot_dis.set_state_constraints(rou)
 point_robot_dis.set_nominal_state_constraints(rou_n)
+
+################################# create point robots disturbance object ##############################
+
+point_robots_dis = PointRobotsDisturbance()
+
+domain_lower_bd = torch.Tensor([-1, -1, -1.2, -1.2, -1, -1, -1.2, -1.2]).float()
+domain_upper_bd = torch.Tensor([9, 9, 1.2, 1.2, 9, 9, 1.2, 1.2]).float()
+
+control_lower_bd = torch.Tensor([-1, -1]).float()
+control_upper_bd = -control_lower_bd
+
+disturbance_lower_bd = torch.Tensor([-0.5, -0.5]).float()
+disturbance_upper_bd = -disturbance_lower_bd
+    
+def rou(s: torch.Tensor) -> torch.Tensor:
+    rou_1 = torch.unsqueeze(s[:, 0] - 0.3, dim=1)
+    rou_2 = torch.unsqueeze( - s[:, 0] + 7.7, dim=1)
+    rou_3 = torch.unsqueeze(s[:, 1] - 0.3 , dim=1)
+    rou_4 = torch.unsqueeze( -s[:, 1] + 7.7, dim=1)
+    rou_5 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1.8
+    
+    rou_6 = torch.norm(s[:, 0:2] - s[:, 4:6], dim=1, keepdim=True) - 0.6 
+
+    return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_5, rou_6) ) 
+
+def rou_n(s: torch.Tensor) -> torch.Tensor:
+    s_norm = torch.norm(s, dim=1)
+
+    return - s_norm + 0.6
+
+point_robots_dis.set_domain_limits(domain_lower_bd, domain_upper_bd)
+point_robots_dis.set_control_limits(control_lower_bd, control_upper_bd)
+point_robots_dis.set_disturbance_limits(disturbance_lower_bd, disturbance_upper_bd)
+point_robots_dis.set_state_constraints(rou)
+point_robots_dis.set_nominal_state_constraints(rou_n)

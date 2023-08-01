@@ -183,7 +183,7 @@ if __name__ == "__main__":
     point_robots_dis.set_nominal_state_constraints(rou_n)
 
     
-    x = torch.tensor([5, 5, 0, 1], dtype=torch.float).reshape(1, 4)
+    x = torch.tensor([5, 5, 0, 1, 1,1, 1, 0], dtype=torch.float).reshape(1, 8)
     # x = torch.rand(3,3, dtype=torch.float)
     u_ref = torch.rand(1, 2, dtype=torch.float)
     disturb = torch.rand(1, 2, dtype=torch.float) 
