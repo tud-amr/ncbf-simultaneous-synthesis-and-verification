@@ -393,7 +393,7 @@ class NeuralNetwork(pl.LightningModule):
         # Compute loss to encourage satisfaction of the following conditions...
         loss = []
 
-        baseline = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values.detach()
+        baseline = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values.detach() - 0.3
 
         safe_mask = torch.logical_not(unsafe_mask)
 
@@ -753,11 +753,11 @@ class NeuralNetwork(pl.LightningModule):
         
         # curricumlum_learning_factor = max(1 - self.current_epoch / (self.trainer.max_epochs -200), -0.1)
         # positive_mask = torch.logical_and((hs >= -0.2), hs >= curricumlum_learning_factor * self.max_value_function.to(s.device)) 
-        positive_mask = (hs >= -0.2)
+        positive_mask = (hs >= -0.75)
          
         #####################################################
         
-        baseline = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values
+        baseline = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values - 0.3
         
         value_fun_violation = (baseline -  hs) * 1
         
