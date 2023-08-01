@@ -225,12 +225,11 @@ disturbance_lower_bd = torch.Tensor([-0.3, -0.3]).float()
 disturbance_upper_bd = -disturbance_lower_bd
     
 def rou(s: torch.Tensor) -> torch.Tensor:
-    rou_1 = torch.unsqueeze(s[:, 0] + 8, dim=1)
-    rou_2 = torch.unsqueeze( - s[:, 0] + 8, dim=1)
-    rou_3 = torch.unsqueeze(s[:, 1] + 8, dim=1)
-    rou_4 = torch.unsqueeze( -s[:, 1] + 8, dim=1)
-    rou_5 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 2.8
-    print(f"rou_5 is {rou_5}")
+    rou_1 = torch.unsqueeze(s[:, 0] - 0.3, dim=1)
+    rou_2 = torch.unsqueeze( - s[:, 0] + 7.7, dim=1)
+    rou_3 = torch.unsqueeze(s[:, 1] - 0.3, dim=1)
+    rou_4 = torch.unsqueeze( -s[:, 1] + 7.7, dim=1)
+    rou_5 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1.8
     return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_5) ) 
 
 def rou_n(s: torch.Tensor) -> torch.Tensor:
