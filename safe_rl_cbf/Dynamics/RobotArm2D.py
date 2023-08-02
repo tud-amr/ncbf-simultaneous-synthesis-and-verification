@@ -10,54 +10,49 @@ import control
 
 from safe_rl_cbf.Dynamics.control_affine_system import ControlAffineSystem
 
-class DubinsCarAcc(ControlAffineSystem):
+class RobotArm2D(ControlAffineSystem):
     """
-    Represents a damped inverted pendulum.
+    Represents a 2d robot arm.
 
     The system has state
 
-        s = [x, y, theta, v, w]
+        s = [theta_1, theta_2]
 
     representing the angle and velocity of the pendulum, and it
     has control inputs
 
-        u = [acc, alpha]
+        u = [w_1, w_2]
 
     representing the torque applied.
 
     """
     
     # Number of states and controls
-    N_DIMS = 5
+    N_DIMS = 2
     N_CONTROLS = 2
     N_DISTURBANCES = 0
 
     # State indices
-    X = 0
-    Y = 1
-    THETA = 2
-    V = 3
-    W = 4
+    THETA_1 = 0
+    THETA_2 = 1
     
     # Control indices
-    ACC = 0
-    ALPHA = 1
+    W_1 = 0
+    W_2 = 1
 
-
-    def __init__(self, ns=N_DIMS, nu=N_CONTROLS, nd=N_DISTURBANCES, dt=0.01):
+    def __init__(self, ns=N_DIMS, nu=N_CONTROLS, nd=N_DISTURBANCES , dt=0.01):
         super().__init__(ns, nu, nd, dt)
-        self.period_state_index = [DubinsCarAcc.THETA]
+        self.l1 = 2
+        self.l2 = 2
+
+        self.period_state_index = [RobotArm2D.THETA_1, RobotArm2D.THETA_2]
 
 
     def f(self, s: torch.Tensor) -> torch.Tensor:
         batch_size = s.shape[0]
         f = torch.zeros((batch_size, self.ns, 1))
         f = f.type_as(s)
-        f[:, DubinsCarAcc.X, 0] = s[:, DubinsCarAcc.V] * torch.cos(s[:, DubinsCarAcc.THETA])
-        f[:, DubinsCarAcc.Y, 0] = s[:, DubinsCarAcc.V] * torch.sin(s[:, DubinsCarAcc.THETA])
-        f[:, DubinsCarAcc.THETA, 0] = s[:, DubinsCarAcc.W]
 
-       
         return f.squeeze(dim=-1)
     
     
@@ -79,14 +74,15 @@ class DubinsCarAcc(ControlAffineSystem):
 
 
         # Effect on theta dot
-        # g[:, DubinsCarAcc.X, DubinsCarAcc.ACC] = torch.cos(x[:, DubinsCarAcc.THETA])
-        # g[:, DubinsCarAcc.Y, DubinsCarAcc.ACC] = torch.sin(x[:, DubinsCarAcc.THETA])
-        # g[:, DubinsCarAcc.THETA, DubinsCarAcc.ALPHA] = 1.0
-
-        g[:, DubinsCarAcc.W, DubinsCarAcc.ALPHA] = 1.0
-        g[:, DubinsCarAcc.V, DubinsCarAcc.ACC] = 1.0
+        # g[:, RobotArm2D.X, RobotArm2D.W_1] = - self.l1 * torch.sin(x[:, RobotArm2D.THETA_1]) - self.l2 * torch.sin(x[:, RobotArm2D.THETA_1] + x[:, RobotArm2D.THETA_2])
+        # g[:, RobotArm2D.Y, RobotArm2D.W_1] = self.l1 * torch.cos(x[:, RobotArm2D.THETA_1]) + self.l2 * torch.cos(x[:, RobotArm2D.THETA_1] + x[:, RobotArm2D.THETA_2])
+        # g[:, RobotArm2D.X, RobotArm2D.W_2] = - self.l2 * torch.sin(x[:, RobotArm2D.THETA_1] + x[:, RobotArm2D.THETA_2])
+        # g[:, RobotArm2D.Y, RobotArm2D.W_2] = self.l2 * torch.cos(x[:, RobotArm2D.THETA_1] + x[:, RobotArm2D.THETA_2])
+        g[:, RobotArm2D.THETA_1, RobotArm2D.W_1] = 1
+        g[:, RobotArm2D.THETA_2, RobotArm2D.W_2] = 1
 
         return g
+
     def d(self, x: torch.Tensor) -> torch.Tensor:
         """
         Return the disturbance-independent part of the control-affine dynamics.
@@ -97,15 +93,11 @@ class DubinsCarAcc(ControlAffineSystem):
         returns:
             d: bs x self.n_dims x self.n_disturbances tensor
         """
-        return torch.zeros((x.shape[0], self.ns, self.nd), dtype=torch.float).to(x.device)
+        batch_size = x.shape[0]
+        d = torch.zeros((batch_size, self.ns, self.nd))
+        d = d.type_as(x)
 
-
-    def step(self, s: torch.Tensor, u: torch.Tensor, dt=None) -> torch.Tensor:
-        s_next = super().step(s, u, dt)
-
-        s_next[:, DubinsCarAcc.THETA] = self.normalize_angle(s_next[:, DubinsCarAcc.THETA])
-        
-        return s_next
+        return d
 
     def range_dxdt(self, x_l: torch.Tensor, x_u:torch.Tensor,  u: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -140,53 +132,61 @@ class DubinsCarAcc(ControlAffineSystem):
         # print(f"dxdt_max is {dxdt_max}")
         return dxdt_min, dxdt_max
 
-    
 
 
 
 if __name__ == "__main__":
 
-    dubins_car = DubinsCarAcc()
+    robot_arm_2d = RobotArm2D()
 
-    domain_lower_bd = torch.Tensor([-1, -1, -torch.pi, -1.2, -1.2]).float()
-    domain_upper_bd = torch.Tensor([9, 9, torch.pi, 1.2, 1.2]).float()
+    domain_lower_bd = torch.Tensor([-4, -4]).float()
+    domain_upper_bd = torch.Tensor([4, 4]).float()
 
-    control_lower_bd = torch.Tensor([-1, -1]).float()
+    control_lower_bd = torch.Tensor([-0.5, -0.5]).float()
     control_upper_bd = -control_lower_bd
         
     def rou(s: torch.Tensor) -> torch.Tensor:
-        rou_1 = torch.unsqueeze(s[:, 0] + 0, dim=1)
-        rou_2 = torch.unsqueeze( - s[:, 0] + 8, dim=1)
-        rou_3 = torch.unsqueeze(s[:, 1] + 0, dim=1)
-        rou_4 = torch.unsqueeze( -s[:, 1] + 8, dim=1)
-        rou_5 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1.4
-        return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_5) ) 
+        theta_1 = s[:, 0]
+        theta_2 = s[:, 1]
+        l1 = 2
+        l2 = 2
+        x_e = l2 * torch.cos(theta_1 + theta_2) + l1 * torch.cos(theta_1)
+        y_e = l2 * torch.sin(theta_1 + theta_2) + l1 * torch.sin(theta_1) 
+
+        rou_1 = torch.unsqueeze(y_e + 0.5, dim=1)
+        rou_2 = torch.unsqueeze( - y_e + 3, dim=1)
+        rou_3 = torch.unsqueeze( theta_1 + 3, dim=1)
+        rou_4 = torch.unsqueeze( - theta_1 + 3, dim=1)
+        rou_5 = torch.unsqueeze( theta_2 + 3, dim=1)
+        rou_6 = torch.unsqueeze( - theta_2 + 3, dim=1)
+        
+        return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_5, rou_6) )
 
     def rou_n(s: torch.Tensor) -> torch.Tensor:
         s_norm = torch.norm(s, dim=1, keepdim=True)
 
         return - s_norm + 0.6
 
-    dubins_car.set_domain_limits(domain_lower_bd, domain_upper_bd)
-    dubins_car.set_control_limits(control_lower_bd, control_upper_bd)
-    dubins_car.set_state_constraints(rou)
-    dubins_car.set_nominal_state_constraints(rou_n)
+    robot_arm_2d.set_domain_limits(domain_lower_bd, domain_upper_bd)
+    robot_arm_2d.set_control_limits(control_lower_bd, control_upper_bd)
+    robot_arm_2d.set_state_constraints(rou)
+    robot_arm_2d.set_nominal_state_constraints(rou_n)
 
     
-    x = torch.tensor([5, 5, -3.5, 0 ,0], dtype=torch.float).reshape(1, 5)
+    x = torch.tensor([0, 1, 2, -3], dtype=torch.float).reshape(2, 2)
     # x = torch.rand(3,3, dtype=torch.float)
-    u_ref = torch.rand(1, 2, dtype=torch.float)
+    u_ref = torch.rand(2, 2, dtype=torch.float)
     
-    f = dubins_car.f(x)
+    f = robot_arm_2d.f(x)
     print(f"the shape of f is {f.shape} \n f is {f} \n ")
-    g = dubins_car.g(x)
+    g = robot_arm_2d.g(x)
     print(f"the shape of g is {g.shape} \n g is {g} \n ")
 
-    dsdt =dubins_car.dsdt(x, u_ref)
+    dsdt =robot_arm_2d.dsdt(x, u_ref)
     print(f"the shape of dsdt is {dsdt.shape} \n dsdt is {dsdt} \n ")
 
-    x_next = dubins_car.step(x, u_ref)
+    x_next = robot_arm_2d.step(x, u_ref)
     print(f"x is {x} \n")
     print(f"x_nest is {x_next}")
 
-    rou = dubins_car.state_constraints(x)
+    rou = robot_arm_2d.state_constraints(x)

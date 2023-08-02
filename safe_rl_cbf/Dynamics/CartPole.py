@@ -176,7 +176,7 @@ if __name__ == "__main__":
         return torch.hstack( (rou_1, rou_2) ) 
 
     def rou_n(s: torch.Tensor) -> torch.Tensor:
-        s_norm = torch.norm(s, dim=1)
+        s_norm = torch.norm(s, dim=1, keepdim=True)
 
         return - s_norm + 0.6
 

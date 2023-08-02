@@ -7,6 +7,7 @@ from safe_rl_cbf.Dynamics.DubinsCarAcc import DubinsCarAcc
 from safe_rl_cbf.Dynamics.PointRobot import PointRobot
 from safe_rl_cbf.Dynamics.PointRobotDisturbance import PointRobotDisturbance
 from safe_rl_cbf.Dynamics.PointRobotsDisturbance import PointRobotsDisturbance
+from safe_rl_cbf.Dynamics.RobotArm2D import RobotArm2D
 import torch
 
 ####################### create an one-D car object ######################
@@ -277,7 +278,7 @@ def rou(s: torch.Tensor) -> torch.Tensor:
     rou_9 = torch.unsqueeze(s[:, 3] + 1, dim=1)
     rou_10 = torch.unsqueeze( -s[:, 3] + 1, dim=1)
 
-    return torch.hstack( (rou_6,) )
+    return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_6) )
 
 def rou_n(s: torch.Tensor) -> torch.Tensor:
     s_norm = torch.norm(s, dim=1, keepdim=True)
@@ -289,3 +290,38 @@ point_robots_dis.set_control_limits(control_lower_bd, control_upper_bd)
 point_robots_dis.set_disturbance_limits(disturbance_lower_bd, disturbance_upper_bd)
 point_robots_dis.set_state_constraints(rou)
 point_robots_dis.set_nominal_state_constraints(rou_n)
+
+robot_arm_2d = RobotArm2D()
+
+domain_lower_bd = torch.Tensor([-4, -4]).float()
+domain_upper_bd = torch.Tensor([4, 4]).float()
+
+control_lower_bd = torch.Tensor([-0.5, -0.5]).float()
+control_upper_bd = -control_lower_bd
+    
+def rou(s: torch.Tensor) -> torch.Tensor:
+    theta_1 = s[:, 0]
+    theta_2 = s[:, 1]
+    l1 = 2
+    l2 = 2
+    x_e = l2 * torch.cos(theta_1 + theta_2) + l1 * torch.cos(theta_1)
+    y_e = l2 * torch.sin(theta_1 + theta_2) + l1 * torch.sin(theta_1) 
+
+    rou_1 = torch.unsqueeze(y_e + 0.5, dim=1)
+    rou_2 = torch.unsqueeze( - y_e + 3, dim=1)
+    rou_3 = torch.unsqueeze( theta_1 + 3, dim=1)
+    rou_4 = torch.unsqueeze( - theta_1 + 3, dim=1)
+    rou_5 = torch.unsqueeze( theta_2 + 3, dim=1)
+    rou_6 = torch.unsqueeze( - theta_2 + 3, dim=1)
+    
+    return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_5, rou_6) )
+
+def rou_n(s: torch.Tensor) -> torch.Tensor:
+    s_norm = torch.norm(s, dim=1, keepdim=True)
+
+    return - s_norm + 0.6
+
+robot_arm_2d.set_domain_limits(domain_lower_bd, domain_upper_bd)
+robot_arm_2d.set_control_limits(control_lower_bd, control_upper_bd)
+robot_arm_2d.set_state_constraints(rou)
+robot_arm_2d.set_nominal_state_constraints(rou_n)
