@@ -167,6 +167,7 @@ class DubinsCarRotateEnv(gym.Env):
 
         if np.abs(obs[0]) == 0 or np.abs(obs[1]) == 0 or np.abs(obs[0])==1 or np.abs(obs[1])==1:
             # reach the boundary
+            print("reach the boundary")
             reward = -10
             done = True
        
@@ -174,6 +175,7 @@ class DubinsCarRotateEnv(gym.Env):
             self.done = True
         
         if np.abs(x - 5) < 1 + self.radius and np.abs(y - 5) < 1 + self.radius:
+            print("reach the obstacle")
             reward = -10
             done = True
 
