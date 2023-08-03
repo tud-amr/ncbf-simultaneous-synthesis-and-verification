@@ -10,69 +10,60 @@ import control
 
 from safe_rl_cbf.Dynamics.control_affine_system import ControlAffineSystem
 
-class InvertedPendulum(ControlAffineSystem):
+class TwoVehicleAvoidance(ControlAffineSystem):
     """
     Represents a damped inverted pendulum.
 
     The system has state
 
-        s = [theta, theta_dot]
+        s = [x_e, y_e, theta_e, x_c, y_c, theta_c]
 
     representing the angle and velocity of the pendulum, and it
     has control inputs
 
-        u = [u]
+        u = [w_e]
 
-    representing the torque applied.
+    representing the torque applied. and the disturbance is
+        d = [w_c]
 
-    There is no disturbance input.
-
-    The system is parameterized by
-        m: mass
-        L: length of the pole
-        b: damping
     """
     
     # Number of states and controls
-    N_DIMS = 2
+    N_DIMS = 6
     N_CONTROLS = 1
-    N_DISTURBANCE = 0
+    N_DISTURBANCES = 1
 
     # State indices
-    THETA = 0
-    THETA_DOT = 1
+    XE = 0
+    YE = 1
+    THETAE = 2
+    XC = 3
+    YC = 4
+    THETAC = 5
+  
+    
     # Control indices
-    U = 0
+    WE = 0
 
-    def __init__(self, ns=N_DIMS, nu=N_CONTROLS, nd=N_DISTURBANCE, dt=0.05, m=1.0, L=1.0, b=0.1):
+    # Disturbance indices
+    WC = 0
+
+    def __init__(self, ns=N_DIMS, nu=N_CONTROLS, nd=N_DISTURBANCES,  v_e=0.5, v_c=0.5, dt=0.05):
         super().__init__(ns, nu, nd, dt)
-        self.m = m
-        self.L = L
-        self.b = b
-        self.gravity = 9.81
+        self.v_e = v_e
+        self.v_c = v_c
+        self.period_state_index = [TwoVehicleAvoidance.THETAE, TwoVehicleAvoidance.THETAC]
 
-        # A = np.array([[0, 1], [0, -self.b/(self.m * self.L**2)]]).reshape((2,2))
-        # B = np.array([0, 1/(self.m * self.L **2)]).reshape((self.ns, self.nu))
-        # Q = np.eye(self.ns)
-        # R = np.eye(self.nu)
-        # K, _, _ = control.lqr(A, B, Q, R)
-        # self.K_lqr = torch.from_numpy(K).float()
 
     def f(self, s: torch.Tensor) -> torch.Tensor:
         batch_size = s.shape[0]
         f = torch.zeros((batch_size, self.ns, 1))
         f = f.type_as(s)
-
-        # and state variables
-        theta = s[:, InvertedPendulum.THETA]
-        theta_dot = s[:, InvertedPendulum.THETA_DOT]
-
-        # The derivatives of theta is just its velocity
-        f[:, InvertedPendulum.THETA, 0] = theta_dot
-        # Acceleration in theta depends on theta via gravity and theta_dot via damping
-        f[:, InvertedPendulum.THETA_DOT, 0] = (
-            (self.gravity * 3 * torch.sin(theta) ) / (2 * self.L) - self.b / (self.m * self.L ** 2 / 3) * theta_dot
-        )
+        
+        f[:, TwoVehicleAvoidance.XE] = self.v_e * torch.cos(s[:, TwoVehicleAvoidance.THETAE])
+        f[:, TwoVehicleAvoidance.YE] = self.v_e * torch.sin(s[:, TwoVehicleAvoidance.THETAE])
+        f[:, TwoVehicleAvoidance.XC] = self.v_c * torch.cos(s[:, TwoVehicleAvoidance.THETAC])
+        f[:, TwoVehicleAvoidance.YC] = self.v_c * torch.sin(s[:, TwoVehicleAvoidance.THETAC])
 
         return f.squeeze(dim=-1)
     
@@ -95,25 +86,28 @@ class InvertedPendulum(ControlAffineSystem):
 
 
         # Effect on theta dot
-        g[:, InvertedPendulum.THETA_DOT, InvertedPendulum.U] = 1 / (self.m * self.L ** 2 / 3)
+        g[:, TwoVehicleAvoidance.THETAE, TwoVehicleAvoidance.WE] = 1
 
         return g
 
     def d(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Return the disturbance-independent part of the control-affine dynamics.
+        Return the disturbance dynamics.
 
         args:
             x: bs x self.n_dims tensor of state
             params: a dictionary giving the parameter values for the system. If None,
                     default to the nominal parameters used at initialization
         returns:
-            d: bs x self.n_dims x self.n_disturbance tensor
+            d: bs x self.n_dims x self.n_disturbances tensor
         """
+        # Extract batch size and set up a tensor for holding the result
         batch_size = x.shape[0]
         d = torch.zeros((batch_size, self.ns, self.nd))
         d = d.type_as(x)
-        
+
+        d[:, TwoVehicleAvoidance.THETAC, TwoVehicleAvoidance.WC] = 1
+
         return d
 
 
@@ -155,47 +149,53 @@ class InvertedPendulum(ControlAffineSystem):
 
 if __name__ == "__main__":
 
-    inverted_pendulum = InvertedPendulum()
+    two_vehicle_avoidance = TwoVehicleAvoidance()
 
-    domain_lower_bd = torch.Tensor([-2, -2]).float()
-    domain_upper_bd = -domain_lower_bd
+    domain_lower_bd = torch.Tensor([-1, -1, -4, -1, -1, -4]).float()
+    domain_upper_bd = torch.Tensor([9, 9, 4, 9, 9, 4]).float()
 
-    control_lower_bd =torch.Tensor([-1]).float()
+    control_lower_bd = torch.Tensor([-1]).float()
     control_upper_bd = -control_lower_bd
+
+    disturbance_lower_bd = torch.Tensor([-1]).float()
+    disturbance_upper_bd = -disturbance_lower_bd
         
     def rou(s: torch.Tensor) -> torch.Tensor:
-        rou_1 = torch.unsqueeze(s[:, 0] + 1, dim=1)
-        rou_2 = torch.unsqueeze( - s[:, 0] + 1, dim=1)
-        rou_3 = torch.unsqueeze(s[:, 1] + 1, dim=1)
-        rou_4 = torch.unsqueeze( -s[:, 1] + 1, dim=1)
-        return torch.hstack( (rou_1, rou_2, rou_3, rou_4) ) 
+        rou_1 = torch.unsqueeze(s[:, 0] + 0, dim=1)
+        rou_2 = torch.unsqueeze( - s[:, 0] + 8, dim=1)
+        rou_3 = torch.unsqueeze(s[:, 1] + 0, dim=1)
+        rou_4 = torch.unsqueeze( -s[:, 1] + 8, dim=1)
+        rou_5 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1.5
+        
+        rou_6 = torch.norm(s[:, 0:2] - s[:, 3:5], dim=1, keepdim=True) - 0.6
+
+        return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_5, rou_6) ) 
 
     def rou_n(s: torch.Tensor) -> torch.Tensor:
         s_norm = torch.norm(s, dim=1, keepdim=True)
 
         return - s_norm + 0.6
 
-    inverted_pendulum.set_domain_limits(domain_lower_bd, domain_upper_bd)
-    inverted_pendulum.set_control_limits(control_lower_bd, control_upper_bd)
-    inverted_pendulum.set_state_constraints(rou)
-    inverted_pendulum.set_nominal_state_constraints(rou_n)
+    dubins_car_rotate.set_domain_limits(domain_lower_bd, domain_upper_bd)
+    dubins_car_rotate.set_control_limits(control_lower_bd, control_upper_bd)
+    dubins_car_rotate.set_state_constraints(rou)
+    dubins_car_rotate.set_nominal_state_constraints(rou_n)
 
     
-
-    x = torch.rand(3,2, dtype=torch.float)
-    u_ref = torch.rand(3, 1, dtype=torch.float)
+    x = torch.tensor([5, 5, 4], dtype=torch.float).reshape(1, dubins_car_rotate.ns)
+    # x = torch.rand(3,3, dtype=torch.float)
+    u_ref = torch.rand(1, 1, dtype=torch.float)
     
-    f = inverted_pendulum.f(x)
+    f = dubins_car_rotate.f(x)
     print(f"the shape of f is {f.shape} \n f is {f} \n ")
-    g = inverted_pendulum.g(x)
+    g = dubins_car_rotate.g(x)
     print(f"the shape of g is {g.shape} \n g is {g} \n ")
 
-    dsdt =inverted_pendulum.dsdt(x, u_ref)
+    dsdt =dubins_car_rotate.dsdt(x, u_ref)
     print(f"the shape of dsdt is {dsdt.shape} \n dsdt is {dsdt} \n ")
 
-    x_next = inverted_pendulum.step(x, u_ref)
+    x_next = dubins_car_rotate.step(x, u_ref)
     print(f"x is {x} \n")
     print(f"x_nest is {x_next}")
 
-    print(f"the K is {inverted_pendulum.K}, the shape is {inverted_pendulum.K.shape}")
-    print(f"u= - K*s is { -inverted_pendulum.K @ x[0,:]} ")
+    rou = dubins_car_rotate.state_constraints(x)

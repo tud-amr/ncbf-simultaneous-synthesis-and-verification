@@ -13,7 +13,7 @@ from matplotlib.ticker import LinearLocator
 
 from safe_rl_cbf.NeuralCBF.MyNeuralNetwork import *
 # from ValueFunctionNeuralNetwork import *
-from safe_rl_cbf.Dynamics.dynamic_system_instances import inverted_pendulum_1, dubins_car, dubins_car_rotate ,dubins_car_acc, point_robot
+from safe_rl_cbf.Dynamics.dynamic_system_instances import inverted_pendulum_1, dubins_car, dubins_car_rotate ,dubins_car_acc, point_robots_dis, robot_arm_2d
 from safe_rl_cbf.Dataset.TrainingDataModule import TrainingDataModule
 
 
@@ -25,7 +25,7 @@ def extract_number(f):
 
 fine_tune = False
 system = dubins_car_rotate
-default_root_dir = "./logs/CBF_logs/dubins_car_rotate4"
+default_root_dir = "./logs/CBF_logs/dubins_car_rotate"
 
 ########################## start training ###############################
 
@@ -40,8 +40,8 @@ if not fine_tune:
 
 
     # NN = NeuralNetwork(dynamic_system=system, data_module=data_module, require_grad_descent_loss=True)
-    NN0 =  NeuralNetwork.load_from_checkpoint("logs/CBF_logs/dubins_car_rotate4/lightning_logs/version_0/checkpoints/epoch=51-step=8476.ckpt",dynamic_system=system, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
-    NN = NeuralNetwork.load_from_checkpoint("logs/CBF_logs/dubins_car_rotate4/lightning_logs/version_1/checkpoints/epoch=42-step=7009.ckpt",dynamic_system=system, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
+    NN0 =  NeuralNetwork.load_from_checkpoint("logs/CBF_logs/dubins_car_rotate/lightning_logs/version_0/checkpoints/epoch=58-step=9617.ckpt",dynamic_system=system, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
+    NN = NeuralNetwork.load_from_checkpoint("logs/CBF_logs/dubins_car_rotate/lightning_logs/version_1/checkpoints/epoch=139-step=22820.ckpt",dynamic_system=system, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
    
     NN.training_stage = 1
     NN.set_previous_cbf(NN0.h)

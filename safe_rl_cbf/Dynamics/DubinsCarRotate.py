@@ -42,7 +42,7 @@ class DubinsCarRotate(ControlAffineSystem):
     # Control indices
     W = 0
 
-    def __init__(self, ns=N_DIMS, nu=N_CONTROLS, nd=N_DISTURBANCES,  v=0.5, dt=0.01):
+    def __init__(self, ns=N_DIMS, nu=N_CONTROLS, nd=N_DISTURBANCES,  v=0.5, dt=0.05):
         super().__init__(ns, nu, nd, dt)
         self.v = v
         self.period_state_index = [DubinsCarRotate.THETA]

@@ -5,7 +5,7 @@ from torch import nn
 import lightning.pytorch as pl
 
 from safe_rl_cbf.NeuralCBF.MyNeuralNetwork import *
-from safe_rl_cbf.Dynamics.dynamic_system_instances import inverted_pendulum_1, dubins_car, dubins_car_rotate ,dubins_car_acc, point_robot
+from safe_rl_cbf.Dynamics.dynamic_system_instances import inverted_pendulum_1, dubins_car, dubins_car_rotate ,dubins_car_acc, point_robot, point_robots_dis, robot_arm_2d
 from safe_rl_cbf.Dataset.TestingDataModule import TestingDataModule
 from safe_rl_cbf.Analysis.draw_cbf import draw_cbf
 
@@ -14,8 +14,8 @@ from safe_rl_cbf.Analysis.draw_cbf import draw_cbf
 ############################# hyperparameters #############################
 
 system = dubins_car_rotate
-checkpoint_path = "logs/CBF_logs/dubins_car_rotate/lightning_logs/version_1/checkpoints/epoch=31-step=5216.ckpt"
-data_module = TestingDataModule(system=system, test_batch_size=512, test_points_num=int(1e2), test_index={0: None, 1: None, 2: 1.4})
+checkpoint_path = "logs/CBF_logs/dubins_car_rotate/lightning_logs/version_1/checkpoints/epoch=139-step=22820.ckpt"
+data_module = TestingDataModule(system=system, test_batch_size=512, test_points_num=int(1e2), test_index={0: None, 1: None, 2: 0})
 
 
 
