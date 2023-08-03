@@ -159,7 +159,10 @@ class DubinsCarRotateEnv(gym.Env):
         distance_to_target_x = self.x_target - x
         distance_to_target_y = self.y_target - y
 
-        reward = (1.0 / (  np.abs(distance_to_target_x) + 0.1 )) + (1.0 / (  np.abs(distance_to_target_y) + 0.1 ))
+        heading_to_target = np.arctan2(distance_to_target_y, distance_to_target_x)
+        heading_error = self.normalize_angle(heading_to_target - theta)
+
+        reward = (1.0 / (  np.abs(distance_to_target_x) + 0.1 )) + (1.0 / (  np.abs(distance_to_target_y) + 0.1 )) - 0.1 * np.abs(heading_error)
         done = False
 
         if np.abs(obs[0]) == 0 or np.abs(obs[1]) == 0 or np.abs(obs[0])==1 or np.abs(obs[1])==1:
@@ -174,14 +177,18 @@ class DubinsCarRotateEnv(gym.Env):
             reward = -10
             done = True
 
+        if np.abs(x - self.x_target) < self.target_radius and np.abs(y - self.y_target) < self.target_radius:
+            reward = 100
+            done = True
+
         
         info = {}
         return obs, reward, done, info
     
     def get_observation(self):
         x, y = self.car.shape.body.position / self.scale
-        theta = self.car.shape.body.angle
-        theta = (theta + np.pi) % (2 * np.pi) - np.pi
+        theta = self.normalize_angle(self.car.shape.body.angle)
+        
         self.state = np.array([x, y, theta])
 
 
@@ -213,6 +220,9 @@ class DubinsCarRotateEnv(gym.Env):
         pygame.display.flip()
         self.clock.tick(1/self.dt)
 
+    @staticmethod
+    def normalize_angle(angle):
+        return (angle + np.pi) % (2 * np.pi) - np.pi
 
 if __name__ == "__main__":
     env = DubinsCarRotateEnv(render_sim=True)

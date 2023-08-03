@@ -30,8 +30,8 @@ class PointRobot():
         space.add(body, self.shape)
     
     def step(self, action):
-        a_x = action[0] * self.scale  + (np.random.rand() * 0.6 - 0.3) * self.scale
-        a_y = action[1] * self.scale  + (np.random.rand() * 0.6 - 0.3) * self.scale
+        a_x = action[0] * self.scale  # + (np.random.rand() * 0.6 - 0.3) * self.scale
+        a_y = action[1] * self.scale  # + (np.random.rand() * 0.6 - 0.3) * self.scale
         
         v_x = self.shape.body.velocity[0] + a_x * self.dt
         v_y = self.shape.body.velocity[1] + a_y * self.dt

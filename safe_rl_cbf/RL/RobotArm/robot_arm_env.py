@@ -11,9 +11,9 @@ import numpy as np
 import pymunk
 from pymunk import Vec2d
 import pymunk.pygame_util
-from safe_rl_cbf.RL.PointRobot.PointRobot import PointRobot
+from safe_rl_cbf.RL.RobotArm.RobotArm import RobotArm
 
-class PointRobotEnv(gym.Env):
+class RobotArmEnv(gym.Env):
     def __init__(self, render_sim=False):
         """
         Initialize the PointRobot environment
@@ -25,25 +25,18 @@ class PointRobotEnv(gym.Env):
         # state property
         self.x_max = 8.0
         self.y_max = 8.0    
-        self.v_max = 1.0
+        self.theta_max = np.pi
        
         
-        min_observation = np.array([0, 0, -1, -1], dtype=np.float32)
-        max_observation = np.array([1, 1, 1, 1], dtype=np.float32)
+        min_observation = np.array([0, 0, -1], dtype=np.float32)
+        max_observation = np.array([1, 1, 1], dtype=np.float32)
         self.observation_space = spaces.Box(low=min_observation, high=max_observation, dtype=np.float32)
         
-        self.radius = 0.3
-
-        self.x_init = 1.0
-        self.y_init = 1.0
-        self.v_init = 0.0
-      
-        self.state = np.array([self.x_init, self.y_init, self.v_init, self.v_init])
+        
 
         # action property
-        self.max_a_x = 1.0
-        self.max_a_y = 1.0
-        self.action_space = spaces.Box(low=np.array([-self.max_a_x, -self.max_a_y]), high=np.array([self.max_a_x, self.max_a_y]), dtype=np.float32)
+        self.max_w = 1.0
+        self.action_space = spaces.Box(low=np.array([-self.max_w, -self.max_w]), high=np.array([self.max_w, self.max_w]), dtype=np.float32)
         
         # simulation property
         self.current_time_step = 0
@@ -69,7 +62,7 @@ class PointRobotEnv(gym.Env):
 
         self.init_pymunk()
         self.init_agent()
-        self.init_obstacles()
+        # self.init_obstacles()
 
         self.h = None
         self.use_cbf = False
@@ -82,7 +75,7 @@ class PointRobotEnv(gym.Env):
 
     def init_pymunk(self):
         self.space = pymunk.Space()
-        self.space.gravity = Vec2d(0, 0)
+        self.space.gravity = Vec2d(0, -9.8 * self.scale)
         
         if self.render_sim is True:
             self.draw_options = pymunk.pygame_util.DrawOptions(self.screen)
@@ -90,7 +83,7 @@ class PointRobotEnv(gym.Env):
             pymunk.pygame_util.positive_y_is_up = True
     
     def init_agent(self):
-        self.point_robot = PointRobot(1, self.radius, self.state, self.space, self.scale, self.dt)
+        self.robot_arm = RobotArm(self.space, self.scale, self.dt)
 
     def init_obstacles(self):
         body = pymunk.Body(body_type=pymunk.Body.STATIC)
@@ -116,7 +109,8 @@ class PointRobotEnv(gym.Env):
                 raise Exception(f"Please use self.set_barrier_function to set barrier function")
             
             device = self.h.device
-            s = torch.from_numpy(self.state).float().reshape((-1, self.h.dynamic_system.ns)).to(device)
+            s = np.array([self.l1_state[2], self.l2_state[2]])
+            s = torch.from_numpy(s).float().reshape((-1, self.h.dynamic_system.ns)).to(device)
             
             hs = self.h(s)
             gradh = self.h.jacobian(hs, s)
@@ -138,11 +132,13 @@ class PointRobotEnv(gym.Env):
             u = action
 
         
-        F1 = u[0] * self.point_robot.mass * self.scale
-        F2 = u[1] * self.point_robot.mass * self.scale
-
-        self.point_robot.shape.body.apply_force_at_local_point((F1, 0), (0, 0))
-        self.point_robot.shape.body.apply_force_at_local_point((0, F2), (0, 0))
+        # F1 = u[0] * self.point_robot.mass * self.scale
+        # F2 = u[1] * self.point_robot.mass * self.scale
+        
+        self.robot_arm.motor_1.rate = u[0]
+        self.robot_arm.motor_2.rate = u[1]
+        # self.point_robot.shape.body.apply_force_at_local_point((F1, 0), (0, 0))
+        # self.point_robot.shape.body.apply_force_at_local_point((0, F2), (0, 0))
         # self.car.shape.body.apply_force_at_local_point((0, -F2), (-self.car.radius, 0))
 
         self.space.step(self.dt)
@@ -151,60 +147,57 @@ class PointRobotEnv(gym.Env):
 
 
         obs = self.get_observation()
-        x, y, v_x, v_y = self.state
+        x, y, theta2 = self.l2_state
 
         distance_to_target_x = self.x_target - x
         distance_to_target_y = self.y_target - y
-        heading_to_target = self.normalize_angle(np.arctan2(distance_to_target_y, distance_to_target_x))
-        heading = self.normalize_angle(np.arctan2(v_y, v_x))
-        heading_error = heading_to_target - heading
 
-
-        reward = (1.0 / (  np.abs(distance_to_target_x) + 0.1 )) + (1.0 / (  np.abs(distance_to_target_y) + 0.1 )) - 0.1 * np.abs(heading_error)
-        
-        
+        reward = (1.0 / (  np.abs(distance_to_target_x) + 0.1 )) + (1.0 / (  np.abs(distance_to_target_y) + 0.1 ))
         done = False
 
-        if np.abs(obs[0]) == 0 or np.abs(obs[1]) == 0 or np.abs(obs[0])==1 or np.abs(obs[1])==1:
-            # reach the boundary
-            reward = -10
-            done = True
-        elif np.abs(obs[2]) == 1 or np.abs(obs[3]) == 1:
-            # reach the maximum velocity or angular velocity
-            print("reach the maximum velocity or angular velocity")
-            reward = -10
-            done = True
+        # if np.abs(obs[0]) == 0 or np.abs(obs[1]) == 0 or np.abs(obs[0])==1 or np.abs(obs[1])==1:
+        #     # reach the boundary
+        #     reward = -10
+        #     done = True
+        # elif np.abs(obs[2]) == 1 or np.abs(obs[3]) == 1:
+        #     # reach the maximum velocity or angular velocity
+        #     print("reach the maximum velocity or angular velocity")
+        #     reward = -10
+        #     done = True
 
         if self.current_time_step == self.max_time_steps:
             self.done = True
         
-        if np.abs(x - 5) < 1 + self.radius and np.abs(y - 5) < 1 + self.radius:
-            reward = -10
-            done = True
+        # if np.abs(x - 5) < 1 + self.radius and np.abs(y - 5) < 1 + self.radius:
+        #     reward = -10
+        #     done = True
 
         
         info = {}
         return obs, reward, done, info
     
     def get_observation(self):
-        x, y = self.point_robot.shape.body.position / self.scale
-        v_x, v_y = self.point_robot.shape.body.velocity / self.scale
-
-        self.state = np.array([x, y, v_x, v_y])
 
 
-        x_obs = np.clip(x/self.x_max, 0, 1)
-        y_obs = np.clip(y/self.y_max, 0, 1)
-        v_x_obs = np.clip(v_x/self.v_max, -1, 1)
-        v_y_obs = np.clip(v_y/self.v_max, -1, 1)
+        x2, y2 = self.robot_arm.l2.body.position / self.scale
+        theta2 = self.normalize_angle(self.robot_arm.l2.body.angle)
         
-        return np.array([x_obs, y_obs, v_x_obs, v_y_obs], dtype=np.float32)
+
+        x1, y1 = self.robot_arm.l1.body.position / self.scale
+        theta1 = self.normalize_angle(self.robot_arm.l1.body.angle)
+
+        self.l1_state = np.array([x1, y1, theta1])
+        self.l2_state = np.array([x2, y2, theta2 - theta1])
+
+        x_obs = np.clip(x1/self.x_max, 0, 1)
+        y_obs = np.clip(y1/self.y_max, 0, 1)
+        theta_obs = np.clip(theta1/self.theta_max, -1, 1)
+        
+        return np.array([x_obs, y_obs, theta_obs], dtype=np.float32)
 
     def reset(self):
         self.current_time_step = 0
-        self.x_init = random.uniform(0, self.x_max)
-        self.y_init = random.uniform(0, self.y_max)
-        self.point_robot.set_states(self.x_init, self.y_init)
+        self.robot_arm.reset()
         return self.get_observation()
 
     def render(self, mode='human'): 
