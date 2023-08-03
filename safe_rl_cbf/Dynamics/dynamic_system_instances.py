@@ -152,7 +152,7 @@ dubins_car_rotate.set_nominal_state_constraints(rou_n)
 
 ######################## create dubins car acc object ######################
 
-dubins_car_acc = DubinsCarAcc()
+dubins_car_acc = DubinsCarAcc(dt=0.1)
 
 domain_lower_bd = torch.Tensor([-1, -1, -4, -0.7, -0.7]).float()
 domain_upper_bd = torch.Tensor([9, 9, 4, 0.7, 0.7]).float()

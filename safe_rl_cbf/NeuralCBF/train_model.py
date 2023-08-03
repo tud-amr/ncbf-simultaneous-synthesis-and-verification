@@ -24,8 +24,8 @@ def extract_number(f):
 ########################### hyperparameters #############################
 
 fine_tune = False
-system = dubins_car_rotate
-default_root_dir = "./logs/CBF_logs/dubins_car_rotate"
+system = dubins_car_acc
+default_root_dir = "./logs/CBF_logs/dubins_car_acc"
 
 ########################## start training ###############################
 
@@ -40,8 +40,8 @@ if not fine_tune:
 
 
     # NN = NeuralNetwork(dynamic_system=system, data_module=data_module, require_grad_descent_loss=True)
-    NN0 =  NeuralNetwork.load_from_checkpoint("logs/CBF_logs/dubins_car_rotate/lightning_logs/version_0/checkpoints/epoch=58-step=9617.ckpt",dynamic_system=system, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
-    NN = NeuralNetwork.load_from_checkpoint("logs/CBF_logs/dubins_car_rotate/lightning_logs/version_1/checkpoints/epoch=139-step=22820.ckpt",dynamic_system=system, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
+    NN0 =  NeuralNetwork.load_from_checkpoint("logs/CBF_logs/dubins_car_acc/lightning_logs/version_1/checkpoints/epoch=86-step=14181.ckpt",dynamic_system=system, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
+    NN = NeuralNetwork.load_from_checkpoint("logs/CBF_logs/dubins_car_acc/lightning_logs/version_2/checkpoints/epoch=55-step=9128.ckpt",dynamic_system=system, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
    
     NN.training_stage = 1
     NN.set_previous_cbf(NN0.h)

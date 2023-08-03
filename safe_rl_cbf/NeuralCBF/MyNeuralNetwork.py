@@ -2175,8 +2175,8 @@ class NeuralNetwork(pl.LightningModule):
 
         # get safety boundary
         baseline = torch.min(self.dynamic_system.state_constraints(x), dim=1, keepdim=True).values
-        state_constraints_norm = torch.norm(baseline, dim=1)
-        inadmissible_boundary_index = state_constraints_norm < 0.1
+        
+        inadmissible_boundary_index = torch.logical_and(baseline < 0, baseline > -0.1).squeeze(dim=-1)
         inadmissible_boundary_state = x[inadmissible_boundary_index]
 
         batch_dict["inadmissible_boundary"]["state"] = inadmissible_boundary_state

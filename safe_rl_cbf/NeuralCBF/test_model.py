@@ -13,9 +13,9 @@ from safe_rl_cbf.Analysis.draw_cbf import draw_cbf
 
 ############################# hyperparameters #############################
 
-system = dubins_car_rotate
-checkpoint_path = "logs/CBF_logs/dubins_car_rotate/lightning_logs/version_1/checkpoints/epoch=139-step=22820.ckpt"
-data_module = TestingDataModule(system=system, test_batch_size=512, test_points_num=int(1e2), test_index={0: None, 1: None, 2: 0})
+system = dubins_car_acc
+checkpoint_path = "logs/CBF_logs/dubins_car_acc/lightning_logs/version_3/checkpoints/epoch=105-step=17278.ckpt"
+data_module = TestingDataModule(system=system, test_batch_size=512, test_points_num=int(1e2), test_index={0: None, 1: None, 2: -1.7, 3: 0.1, 4: 0})
 
 
 

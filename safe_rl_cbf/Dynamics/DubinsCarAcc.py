@@ -87,6 +87,7 @@ class DubinsCarAcc(ControlAffineSystem):
         g[:, DubinsCarAcc.V, DubinsCarAcc.ACC] = 1.0
 
         return g
+        
     def d(self, x: torch.Tensor) -> torch.Tensor:
         """
         Return the disturbance-independent part of the control-affine dynamics.
@@ -98,14 +99,6 @@ class DubinsCarAcc(ControlAffineSystem):
             d: bs x self.n_dims x self.n_disturbances tensor
         """
         return torch.zeros((x.shape[0], self.ns, self.nd), dtype=torch.float).to(x.device)
-
-
-    def step(self, s: torch.Tensor, u: torch.Tensor, dt=None) -> torch.Tensor:
-        s_next = super().step(s, u, dt)
-
-        s_next[:, DubinsCarAcc.THETA] = self.normalize_angle(s_next[:, DubinsCarAcc.THETA])
-        
-        return s_next
 
     def range_dxdt(self, x_l: torch.Tensor, x_u:torch.Tensor,  u: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
