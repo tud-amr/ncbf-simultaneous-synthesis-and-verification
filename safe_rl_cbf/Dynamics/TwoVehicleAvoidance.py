@@ -48,7 +48,7 @@ class TwoVehicleAvoidance(ControlAffineSystem):
     # Disturbance indices
     WC = 0
 
-    def __init__(self, ns=N_DIMS, nu=N_CONTROLS, nd=N_DISTURBANCES,  v_e=0.5, v_c=0.5, dt=0.05):
+    def __init__(self, ns=N_DIMS, nu=N_CONTROLS, nd=N_DISTURBANCES,  v_e=0.4, v_c=0.4, dt=0.05):
         super().__init__(ns, nu, nd, dt)
         self.v_e = v_e
         self.v_c = v_c
@@ -60,10 +60,10 @@ class TwoVehicleAvoidance(ControlAffineSystem):
         f = torch.zeros((batch_size, self.ns, 1))
         f = f.type_as(s)
         
-        f[:, TwoVehicleAvoidance.XE] = self.v_e * torch.cos(s[:, TwoVehicleAvoidance.THETAE])
-        f[:, TwoVehicleAvoidance.YE] = self.v_e * torch.sin(s[:, TwoVehicleAvoidance.THETAE])
-        f[:, TwoVehicleAvoidance.XC] = self.v_c * torch.cos(s[:, TwoVehicleAvoidance.THETAC])
-        f[:, TwoVehicleAvoidance.YC] = self.v_c * torch.sin(s[:, TwoVehicleAvoidance.THETAC])
+        f[:, TwoVehicleAvoidance.XE, 0] = self.v_e * torch.cos(s[:, TwoVehicleAvoidance.THETAE])
+        f[:, TwoVehicleAvoidance.YE, 0] = self.v_e * torch.sin(s[:, TwoVehicleAvoidance.THETAE])
+        f[:, TwoVehicleAvoidance.XC, 0] = self.v_c * torch.cos(s[:, TwoVehicleAvoidance.THETAC])
+        f[:, TwoVehicleAvoidance.YC, 0] = self.v_c * torch.sin(s[:, TwoVehicleAvoidance.THETAC])
 
         return f.squeeze(dim=-1)
     
@@ -176,26 +176,27 @@ if __name__ == "__main__":
 
         return - s_norm + 0.6
 
-    dubins_car_rotate.set_domain_limits(domain_lower_bd, domain_upper_bd)
-    dubins_car_rotate.set_control_limits(control_lower_bd, control_upper_bd)
-    dubins_car_rotate.set_state_constraints(rou)
-    dubins_car_rotate.set_nominal_state_constraints(rou_n)
+    two_vehicle_avoidance.set_domain_limits(domain_lower_bd, domain_upper_bd)
+    two_vehicle_avoidance.set_control_limits(control_lower_bd, control_upper_bd)
+    two_vehicle_avoidance.set_disturbance_limits(disturbance_lower_bd, disturbance_upper_bd)
+    two_vehicle_avoidance.set_state_constraints(rou)
+    two_vehicle_avoidance.set_nominal_state_constraints(rou_n)
 
     
-    x = torch.tensor([5, 5, 4], dtype=torch.float).reshape(1, dubins_car_rotate.ns)
+    x = torch.tensor([5, 5, 0, 1, 1, 0], dtype=torch.float).reshape(1, two_vehicle_avoidance.ns)
     # x = torch.rand(3,3, dtype=torch.float)
     u_ref = torch.rand(1, 1, dtype=torch.float)
     
-    f = dubins_car_rotate.f(x)
+    f = two_vehicle_avoidance.f(x)
     print(f"the shape of f is {f.shape} \n f is {f} \n ")
-    g = dubins_car_rotate.g(x)
+    g = two_vehicle_avoidance.g(x)
     print(f"the shape of g is {g.shape} \n g is {g} \n ")
 
-    dsdt =dubins_car_rotate.dsdt(x, u_ref)
+    dsdt =two_vehicle_avoidance.dsdt(x, u_ref)
     print(f"the shape of dsdt is {dsdt.shape} \n dsdt is {dsdt} \n ")
 
-    x_next = dubins_car_rotate.step(x, u_ref)
+    x_next = two_vehicle_avoidance.step(x, u_ref)
     print(f"x is {x} \n")
     print(f"x_nest is {x_next}")
 
-    rou = dubins_car_rotate.state_constraints(x)
+    rou = two_vehicle_avoidance.state_constraints(x)
