@@ -11,7 +11,7 @@ import numpy as np
 import pymunk
 from pymunk import Vec2d
 import pymunk.pygame_util
-from safe_rl_cbf.RL.DubinsCar.DubinsCar import DubinsCar
+from safe_rl_cbf.RL.DubinsCarAcc.DubinsCarAcc import DubinsCar
 
 class DubinsCarEnv(gym.Env):
     def __init__(self, render_sim=False):
@@ -159,26 +159,35 @@ class DubinsCarEnv(gym.Env):
         distance_to_target_x = self.x_target - x
         distance_to_target_y = self.y_target - y
 
-        reward = (1.0 / (  np.abs(distance_to_target_x) + 0.1 )) + (1.0 / (  np.abs(distance_to_target_y) + 0.1 ))
+        heading_to_target = np.arctan2(distance_to_target_y, distance_to_target_x)
+        heading_error = self.normalize_angle(heading_to_target - theta)
+
+        reward = (1.0 / (  np.abs(distance_to_target_x) + 0.1 )) + (1.0 / (  np.abs(distance_to_target_y) + 0.1 )) - 0.1 * np.abs(heading_error) - 0.001 * np.abs(v) - 0.001 * np.abs(w)
         done = False
 
         if np.abs(obs[0]) == 0 or np.abs(obs[1]) == 0 or np.abs(obs[0])==1 or np.abs(obs[1])==1:
             # reach the boundary
+            # print("reach the boundary")
             reward = -10
             done = True
         elif np.abs(obs[3]) == 1 or np.abs(obs[4]) == 1 or np.abs(obs[3]) == -1 or np.abs(obs[4]) == -1:
             # reach the maximum velocity or angular velocity
+            # print("reach the maximum velocity or angular velocity")
             reward = -10
             done = True
 
-        if self.current_time_step == self.max_time_steps:
-            self.done = True
-        
         if np.abs(x - 5) < 1 + self.radius and np.abs(y - 5) < 1 + self.radius:
             reward = -10
             done = True
 
+        if np.abs(x - self.x_target) < self.target_radius and np.abs(y - self.y_target) < self.target_radius:
+            reward = 100
+            done = True
         
+
+        if self.current_time_step == self.max_time_steps:
+            self.done = True
+
         info = {}
         return obs, reward, done, info
     
@@ -219,6 +228,10 @@ class DubinsCarEnv(gym.Env):
         self.space.step(self.dt)
         pygame.display.flip()
         self.clock.tick(1/self.dt)
+
+    @staticmethod
+    def normalize_angle(angle):
+        return (angle + np.pi) % (2 * np.pi) - np.pi
 
 
 if __name__ == "__main__":
