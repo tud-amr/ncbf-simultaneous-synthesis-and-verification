@@ -5,7 +5,7 @@ from torch import nn
 import lightning.pytorch as pl
 
 from safe_rl_cbf.NeuralCBF.MyNeuralNetwork import *
-from safe_rl_cbf.Dynamics.dynamic_system_instances import inverted_pendulum_1, dubins_car, dubins_car_rotate ,dubins_car_acc, point_robot, point_robots_dis, robot_arm_2d
+from safe_rl_cbf.Dynamics.dynamic_system_instances import inverted_pendulum_1, dubins_car, dubins_car_rotate ,dubins_car_acc, point_robot, point_robots_dis, robot_arm_2d, two_vehicle_avoidance
 from safe_rl_cbf.Dataset.TestingDataModule import TestingDataModule
 from safe_rl_cbf.Analysis.draw_cbf import draw_cbf
 
@@ -13,9 +13,9 @@ from safe_rl_cbf.Analysis.draw_cbf import draw_cbf
 
 ############################# hyperparameters #############################
 
-system = dubins_car_acc
-checkpoint_path = "logs/CBF_logs/dubins_car_acc/lightning_logs/version_3/checkpoints/epoch=105-step=17278.ckpt"
-data_module = TestingDataModule(system=system, test_batch_size=512, test_points_num=int(1e2), test_index={0: None, 1: None, 2: -1.7, 3: 0.1, 4: 0})
+system = two_vehicle_avoidance
+checkpoint_path = "logs/CBF_logs/two_vehicle_avoidance/lightning_logs/version_1/checkpoints/epoch=869-step=141810.ckpt"
+data_module = TestingDataModule(system=system, test_batch_size=512, test_points_num=int(1e2), test_index={0: None, 1: None, 2: -1.7, 3: 1, 4: 1, 5: 0})
 
 
 
