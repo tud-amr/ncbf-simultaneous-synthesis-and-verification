@@ -57,9 +57,8 @@ class VehicleAndHuman(ControlAffineSystem):
 
     def __init__(self, ns=N_DIMS, nu=N_CONTROLS, nd=N_DISTURBANCES,  v_e=0.5, v_c=0.5, dt=0.05):
         super().__init__(ns, nu, nd, dt)
-        self.v_e = v_e
-        self.v_c = v_c
-        self.period_state_index = [TwoVehicleAvoidance.THETAE, TwoVehicleAvoidance.THETAC]
+
+        self.period_state_index = [VehicleAndHuman.THETAE]
 
 
     def f(self, s: torch.Tensor) -> torch.Tensor:
@@ -67,10 +66,12 @@ class VehicleAndHuman(ControlAffineSystem):
         f = torch.zeros((batch_size, self.ns, 1))
         f = f.type_as(s)
         
-        f[:, TwoVehicleAvoidance.XE] = self.v_e * torch.cos(s[:, TwoVehicleAvoidance.THETAE])
-        f[:, TwoVehicleAvoidance.YE] = self.v_e * torch.sin(s[:, TwoVehicleAvoidance.THETAE])
-        f[:, TwoVehicleAvoidance.XC] = self.v_c * torch.cos(s[:, TwoVehicleAvoidance.THETAC])
-        f[:, TwoVehicleAvoidance.YC] = self.v_c * torch.sin(s[:, TwoVehicleAvoidance.THETAC])
+        f[:, VehicleAndHuman.XE, 0] = s[:, VehicleAndHuman.VE] * torch.cos(s[:, VehicleAndHuman.THETAE])
+        f[:, VehicleAndHuman.YE, 0] = s[:, VehicleAndHuman.VE] * torch.sin(s[:, VehicleAndHuman.THETAE])
+        f[:, VehicleAndHuman.THETAE, 0] = s[:, VehicleAndHuman.WE]
+
+        f[:, VehicleAndHuman.XC, 0] = s[:, VehicleAndHuman.DXC]
+        f[:, VehicleAndHuman.YC, 0] = s[:, VehicleAndHuman.DYC]
 
         return f.squeeze(dim=-1)
     
@@ -93,7 +94,9 @@ class VehicleAndHuman(ControlAffineSystem):
 
 
         # Effect on theta dot
-        g[:, TwoVehicleAvoidance.THETAE, TwoVehicleAvoidance.WE] = 1
+        g[:, VehicleAndHuman.VE, VehicleAndHuman.AE] = 1
+        g[:, VehicleAndHuman.WE, VehicleAndHuman.ALPHAE] = 1
+
 
         return g
 
@@ -113,7 +116,8 @@ class VehicleAndHuman(ControlAffineSystem):
         d = torch.zeros((batch_size, self.ns, self.nd))
         d = d.type_as(x)
 
-        d[:, TwoVehicleAvoidance.THETAC, TwoVehicleAvoidance.WC] = 1
+        d[:, VehicleAndHuman.XC, VehicleAndHuman.AC_X] = 1
+        d[:, VehicleAndHuman.YC, VehicleAndHuman.AC_Y] = 1
 
         return d
 
@@ -156,15 +160,15 @@ class VehicleAndHuman(ControlAffineSystem):
 
 if __name__ == "__main__":
 
-    two_vehicle_avoidance = TwoVehicleAvoidance()
+    vehicle_human = VehicleAndHuman()
 
-    domain_lower_bd = torch.Tensor([-1, -1, -4, -1, -1, -4]).float()
-    domain_upper_bd = torch.Tensor([9, 9, 4, 9, 9, 4]).float()
+    domain_lower_bd = torch.Tensor([-1, -1, -4, -1.2, -1.2, -1, -1, -1.2, -1.2]).float()
+    domain_upper_bd = torch.Tensor([9, 9, 4, 1.2, 1.2, 9, 9, 1.2, 1.2]).float()
 
-    control_lower_bd = torch.Tensor([-1]).float()
+    control_lower_bd = torch.Tensor([-1, -1]).float()
     control_upper_bd = -control_lower_bd
 
-    disturbance_lower_bd = torch.Tensor([-1]).float()
+    disturbance_lower_bd = torch.Tensor([-1, -1]).float()
     disturbance_upper_bd = -disturbance_lower_bd
         
     def rou(s: torch.Tensor) -> torch.Tensor:
@@ -174,35 +178,35 @@ if __name__ == "__main__":
         rou_4 = torch.unsqueeze( -s[:, 1] + 8, dim=1)
         rou_5 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1.5
         
-        rou_6 = torch.norm(s[:, 0:2] - s[:, 3:5], dim=1, keepdim=True) - 0.6
+        rou_6 = torch.norm(s[:, 0:2] - s[:, 3:5], dim=1, keepdim=True) - 0.8
 
-        return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_5, rou_6) ) 
+        return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_6) ) 
 
     def rou_n(s: torch.Tensor) -> torch.Tensor:
         s_norm = torch.norm(s, dim=1, keepdim=True)
 
         return - s_norm + 0.6
 
-    dubins_car_rotate.set_domain_limits(domain_lower_bd, domain_upper_bd)
-    dubins_car_rotate.set_control_limits(control_lower_bd, control_upper_bd)
-    dubins_car_rotate.set_state_constraints(rou)
-    dubins_car_rotate.set_nominal_state_constraints(rou_n)
+    vehicle_human.set_domain_limits(domain_lower_bd, domain_upper_bd)
+    vehicle_human.set_control_limits(control_lower_bd, control_upper_bd)
+    vehicle_human.set_state_constraints(rou)
+    vehicle_human.set_nominal_state_constraints(rou_n)
 
     
-    x = torch.tensor([5, 5, 4], dtype=torch.float).reshape(1, dubins_car_rotate.ns)
+    x = torch.tensor([5, 5, 1.7, 0.5, 0.1, 3, 3, -0.3, 0.4], dtype=torch.float).reshape(1, vehicle_human.ns)
     # x = torch.rand(3,3, dtype=torch.float)
-    u_ref = torch.rand(1, 1, dtype=torch.float)
+    u_ref = torch.rand(1, 2, dtype=torch.float)
     
-    f = dubins_car_rotate.f(x)
+    f = vehicle_human.f(x)
     print(f"the shape of f is {f.shape} \n f is {f} \n ")
-    g = dubins_car_rotate.g(x)
+    g = vehicle_human.g(x)
     print(f"the shape of g is {g.shape} \n g is {g} \n ")
 
-    dsdt =dubins_car_rotate.dsdt(x, u_ref)
+    dsdt =vehicle_human.dsdt(x, u_ref)
     print(f"the shape of dsdt is {dsdt.shape} \n dsdt is {dsdt} \n ")
 
-    x_next = dubins_car_rotate.step(x, u_ref)
+    x_next = vehicle_human.step(x, u_ref)
     print(f"x is {x} \n")
     print(f"x_nest is {x_next}")
 
-    rou = dubins_car_rotate.state_constraints(x)
+    rou = vehicle_human.state_constraints(x)
