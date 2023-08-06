@@ -337,10 +337,10 @@ robot_arm_2d.set_nominal_state_constraints(rou_n)
 
 ########################## create two vehicle avoidance object ##############################
 
-two_vehicle_avoidance = TwoVehicleAvoidance(dt=0.1)
+two_vehicle_avoidance = TwoVehicleAvoidance(dt=0.05)
 
 domain_lower_bd = torch.Tensor([-1, -1, -4, -1, -1, -4]).float()
-domain_upper_bd = torch.Tensor([9, 9, 4, 9, 9, 4]).float()
+domain_upper_bd = torch.Tensor([3, 3, 4, 3, 3, 4]).float()
 
 control_lower_bd = torch.Tensor([-1]).float()
 control_upper_bd = -control_lower_bd
@@ -356,9 +356,9 @@ def rou(s: torch.Tensor) -> torch.Tensor:
     
     # rou_5 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1.8
     
-    rou_6 = torch.norm(s[:, 0:2] - s[:, 3:5], dim=1, keepdim=True) - 0.8
+    rou_6 = torch.norm(s[:, 0:2] - s[:, 3:5], dim=1, keepdim=True) - 0.5
 
-    return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_6) ) 
+    return torch.hstack( (rou_6,) ) 
 
 def rou_n(s: torch.Tensor) -> torch.Tensor:
     s_norm = torch.norm(s, dim=1, keepdim=True)

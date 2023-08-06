@@ -78,11 +78,11 @@ class NeuralNetwork(pl.LightningModule):
         self.fine_tune = fine_tune
         self.require_grad_descent_loss = require_grad_descent_loss
         self.h = nn.Sequential(
-                nn.Linear(self.dynamic_system.ns, 256),
+                nn.Linear(self.dynamic_system.ns, 512),
                 nn.Tanh(),
-                nn.Linear(256, 256),
+                nn.Linear(512, 512),
                 nn.Tanh(),
-                nn.Linear(256, 256),
+                nn.Linear(512, 256),
                 nn.Tanh(),
                 nn.Linear(256,1)
             )
