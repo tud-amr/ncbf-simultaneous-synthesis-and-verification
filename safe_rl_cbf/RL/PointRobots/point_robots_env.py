@@ -14,7 +14,7 @@ import pymunk
 from pymunk.pygame_util import *
 from pymunk.vec2d import Vec2d
 
-from safe_rl_cbf.RL.PointRobot.PointRobot import PointRobot
+from safe_rl_cbf.RL.PointRobots.PointRobot import PointRobot
 
 class PointRobotsEnv(gym.Env):
     def __init__(self, render_sim=False):
@@ -72,7 +72,7 @@ class PointRobotsEnv(gym.Env):
 
         self.init_pymunk()
         self.init_agent()
-        # self.init_obstacles()
+        self.init_obstacles()
 
         self.h = None
         self.use_cbf = False
@@ -97,8 +97,8 @@ class PointRobotsEnv(gym.Env):
     
     def init_agent(self):
         self.ego_point_robot = PointRobot(1, self.radius, self.state, self.space, self.scale, self.dt)
-        self.component_point_robot = PointRobot(1, self.radius, self.state, self.space, self.scale, self.dt)
-
+        self.component_point_robot = PointRobot(1, self.radius, self.state, self.space, self.scale, self.dt, color=(0, 255, 0))
+        
     def init_obstacles(self):
         body = pymunk.Body(body_type=pymunk.Body.STATIC)
         x = 5
@@ -241,10 +241,11 @@ class PointRobotsEnv(gym.Env):
     def do_event(self):
         keys = pygame.key.get_pressed()
         keys_pressed = [k for k, v in self.keys.items() if keys[k]]
-        
-        for key in keys_pressed:
-            F = Vec2d(self.keys[key][0], self.keys[key][1] ) * self.ego_point_robot.mass * self.scale
-            self.component_point_robot.shape.body.apply_force_at_local_point(F, (0, 0))
+        x, y , v_x, v_y = self.component_state
+        if abs(v_x) < 1 and abs(v_y) < 1:
+            for key in keys_pressed:
+                F = Vec2d(self.keys[key][0], self.keys[key][1] ) * self.ego_point_robot.mass * self.scale
+                self.component_point_robot.shape.body.apply_force_at_local_point(F, (0, 0))
         # if event.type == KEYDOWN:
         #     if event.key in self.keys:
         #         F = Vec2d(self.keys[event.key][0], self.keys[event.key][1] ) * self.ego_point_robot.mass * self.scale

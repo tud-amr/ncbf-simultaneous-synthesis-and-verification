@@ -17,7 +17,7 @@ env = PointRobotsEnv(render_sim=render_sim)
 # model.set_env(env)
 
 data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=512, training_points_num=int(1e6))
-NN = NeuralNetwork.load_from_checkpoint("saved_models/point_robots/checkpoints/epoch=91-step=14996.ckpt", dynamic_system=system, data_module=data_module )
+NN = NeuralNetwork.load_from_checkpoint("saved_models/point_robots/checkpoints/epoch=142-step=23309.ckpt", dynamic_system=system, data_module=data_module )
 NN.to(device)
 
 env.set_barrier_function(NN)

@@ -7,7 +7,7 @@ import pygame
 
 
 class PointRobot():
-    def __init__(self, mass, radius,state, space, scale, dt):
+    def __init__(self, mass, radius,state, space, scale, dt, color=(66, 135, 245)):
         self.mass = mass
         self.scale  = scale
         self.dt = dt
@@ -27,6 +27,7 @@ class PointRobot():
         body.angle = 0
 
         self.shape = pymunk.Circle(body, radius)
+        self.shape.color = pygame.Color(color)
         space.add(body, self.shape)
     
     def step(self, action):
