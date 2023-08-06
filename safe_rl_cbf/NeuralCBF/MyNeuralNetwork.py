@@ -2009,7 +2009,7 @@ class NeuralNetwork(pl.LightningModule):
                 pass
                 # self.trainer.should_stop = True
         
-            if self.training_stage == 0 and (performance_losses < 5 and safety_losses < 5): # warm up, shape h and g
+            if self.training_stage == 0 and (performance_losses < 1 and safety_losses < 1): # warm up, shape h and g
                 self.trainer.should_stop = True
                 self.training_stage = 1  # start to consider condition 3
                 self.epoch_record = self.current_epoch

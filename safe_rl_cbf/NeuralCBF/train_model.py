@@ -13,7 +13,7 @@ from matplotlib.ticker import LinearLocator
 
 from safe_rl_cbf.NeuralCBF.MyNeuralNetwork import *
 # from ValueFunctionNeuralNetwork import *
-from safe_rl_cbf.Dynamics.dynamic_system_instances import inverted_pendulum_1, dubins_car, dubins_car_rotate ,dubins_car_acc, point_robots_dis, robot_arm_2d
+from safe_rl_cbf.Dynamics.dynamic_system_instances import inverted_pendulum_1, dubins_car, dubins_car_rotate ,dubins_car_acc, point_robots_dis, robot_arm_2d, two_vehicle_avoidance
 from safe_rl_cbf.Dataset.TrainingDataModule import TrainingDataModule
 
 
@@ -24,8 +24,8 @@ def extract_number(f):
 ########################### hyperparameters #############################
 
 fine_tune = False
-system = dubins_car_acc
-default_root_dir = "./logs/CBF_logs/dubins_car_acc"
+system = two_vehicle_avoidance
+default_root_dir = "./logs/CBF_logs/two_vehicle_avoidance"
 
 ########################## start training ###############################
 
@@ -39,17 +39,17 @@ data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=51
 if not fine_tune:
 
 
-    # NN = NeuralNetwork(dynamic_system=system, data_module=data_module, require_grad_descent_loss=True)
-    NN0 =  NeuralNetwork.load_from_checkpoint("logs/CBF_logs/dubins_car_acc/lightning_logs/version_1/checkpoints/epoch=86-step=14181.ckpt",dynamic_system=system, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
-    NN = NeuralNetwork.load_from_checkpoint("logs/CBF_logs/dubins_car_acc/lightning_logs/version_2/checkpoints/epoch=55-step=9128.ckpt",dynamic_system=system, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
+    NN = NeuralNetwork(dynamic_system=system, data_module=data_module, require_grad_descent_loss=True)
+    # NN0 =  NeuralNetwork.load_from_checkpoint("logs/CBF_logs/dubins_car_acc/lightning_logs/version_1/checkpoints/epoch=86-step=14181.ckpt",dynamic_system=system, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
+    # NN = NeuralNetwork.load_from_checkpoint("logs/CBF_logs/two_vehicle_avoidance/lightning_logs/version_1/checkpoints/epoch=869-step=141810.ckpt",dynamic_system=system, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
    
-    NN.training_stage = 1
-    NN.set_previous_cbf(NN0.h)
+    NN.training_stage = 0
+    # NN.set_previous_cbf(NN.h)
 
     trainer = pl.Trainer(
         accelerator = "gpu",
         devices = 1,
-        max_epochs=400,
+        max_epochs=2000,
         # callbacks=[ EarlyStopping(monitor="Total_loss/train", mode="min", check_on_train_epoch_end=True, strict=False, patience=20, stopping_threshold=1e-3) ], 
         # callbacks=[StochasticWeightAveraging(swa_lrs=1e-2)],
         default_root_dir=default_root_dir,

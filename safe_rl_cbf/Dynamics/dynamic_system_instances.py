@@ -8,6 +8,9 @@ from safe_rl_cbf.Dynamics.PointRobot import PointRobot
 from safe_rl_cbf.Dynamics.PointRobotDisturbance import PointRobotDisturbance
 from safe_rl_cbf.Dynamics.PointRobotsDisturbance import PointRobotsDisturbance
 from safe_rl_cbf.Dynamics.RobotArm2D import RobotArm2D
+from safe_rl_cbf.Dynamics.TwoVehicleAvoidance import TwoVehicleAvoidance
+
+
 import torch
 
 ####################### create an one-D car object ######################
@@ -331,3 +334,39 @@ robot_arm_2d.set_domain_limits(domain_lower_bd, domain_upper_bd)
 robot_arm_2d.set_control_limits(control_lower_bd, control_upper_bd)
 robot_arm_2d.set_state_constraints(rou)
 robot_arm_2d.set_nominal_state_constraints(rou_n)
+
+########################## create two vehicle avoidance object ##############################
+
+two_vehicle_avoidance = TwoVehicleAvoidance(dt=0.05)
+
+domain_lower_bd = torch.Tensor([-1, -1, -4, -1, -1, -4]).float()
+domain_upper_bd = torch.Tensor([3, 3, 4, 3, 3, 4]).float()
+
+control_lower_bd = torch.Tensor([-1]).float()
+control_upper_bd = -control_lower_bd
+
+disturbance_lower_bd = torch.Tensor([-1]).float()
+disturbance_upper_bd = -disturbance_lower_bd
+    
+def rou(s: torch.Tensor) -> torch.Tensor:
+    rou_1 = torch.unsqueeze(s[:, 0] - 0.3, dim=1)
+    rou_2 = torch.unsqueeze( - s[:, 0] + 7.7, dim=1)
+    rou_3 = torch.unsqueeze(s[:, 1] - 0.3, dim=1)
+    rou_4 = torch.unsqueeze( -s[:, 1] + 7.7, dim=1)
+    
+    # rou_5 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1.8
+    
+    rou_6 = torch.norm(s[:, 0:2] - s[:, 3:5], dim=1, keepdim=True) - 0.5
+
+    return torch.hstack( (rou_6,) ) 
+
+def rou_n(s: torch.Tensor) -> torch.Tensor:
+    s_norm = torch.norm(s, dim=1, keepdim=True)
+
+    return - s_norm + 0.6
+
+two_vehicle_avoidance.set_domain_limits(domain_lower_bd, domain_upper_bd)
+two_vehicle_avoidance.set_control_limits(control_lower_bd, control_upper_bd)
+two_vehicle_avoidance.set_disturbance_limits(disturbance_lower_bd, disturbance_upper_bd)
+two_vehicle_avoidance.set_state_constraints(rou)
+two_vehicle_avoidance.set_nominal_state_constraints(rou_n)
