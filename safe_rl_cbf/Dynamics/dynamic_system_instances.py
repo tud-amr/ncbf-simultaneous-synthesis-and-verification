@@ -381,7 +381,7 @@ domain_upper_bd = torch.Tensor([3, 3, 4, 1.2, 1.2, 3, 3, 1.2, 1.2]).float()
 control_lower_bd = torch.Tensor([-1, -1]).float()
 control_upper_bd = -control_lower_bd
 
-disturbance_lower_bd = torch.Tensor([-1, -1]).float()
+disturbance_lower_bd = torch.Tensor([-0.2, -0.2]).float()
 disturbance_upper_bd = -disturbance_lower_bd
     
 def rou(s: torch.Tensor) -> torch.Tensor:
