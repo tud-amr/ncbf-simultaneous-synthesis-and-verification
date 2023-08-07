@@ -81,8 +81,8 @@ class VehicleHumanEnv(gym.Env):
         self.h = None
         self.use_cbf = False
 
-        self.keys = {K_LEFT: (-0.2, 0), K_RIGHT: (0.2, 0),
-                K_UP: (0, 0.2), K_DOWN: (0, -0.2)}
+        self.keys = {K_LEFT: (-0.15, 0), K_RIGHT: (0.15, 0),
+                K_UP: (0, 0.15), K_DOWN: (0, -0.15)}
 
     def init_pygame(self):
         pygame.init()
@@ -132,12 +132,15 @@ class VehicleHumanEnv(gym.Env):
             
             hs = self.h(s)
             gradh = self.h.jacobian(hs, s)
-            if hs < 0:
-                # raise Exception(f"Current state [{self.state[0]}, {self.state[1]}] is unsafe, h(s)={hs}")
-                print(f"Current state [{self.ego_state}, {self.human_state}] is unsafe, h(s)={hs}")
+            
             
             u_ref = torch.from_numpy(action).float().reshape((-1,self.h.dynamic_system.nu)).to(device)            
             u_result, r_result = self.h.solve_CLF_QP(s, gradh, u_ref, epsilon=0.1)
+            print(f"u_result is {u_result}")
+            if hs < 0:
+                # raise Exception(f"Current state [{self.state[0]}, {self.state[1]}] is unsafe, h(s)={hs}")
+                print(f"Current state [{self.ego_state}, {self.human_state}] is unsafe, h(s)={hs}")
+                print(f"u_result is {u_result}")
 
             if r_result > 0.0:
                 self.break_safety += 1
@@ -159,7 +162,7 @@ class VehicleHumanEnv(gym.Env):
         self.do_event()
         
         self.ego_vehicle.step(u)
-        # self.space.step(self.dt)
+        self.space.step(self.dt)
        
         self.current_time_step += 1
 
@@ -250,6 +253,7 @@ class VehicleHumanEnv(gym.Env):
             for key in keys_pressed:
                 F = Vec2d(self.keys[key][0], self.keys[key][1] ) * self.human.mass * self.scale
                 self.human.shape.body.apply_force_at_local_point(F, (0, 0))
+        
         # if event.type == KEYDOWN:
         #     if event.key in self.keys:
         #         F = Vec2d(self.keys[event.key][0], self.keys[event.key][1] ) * self.ego_point_robot.mass * self.scale

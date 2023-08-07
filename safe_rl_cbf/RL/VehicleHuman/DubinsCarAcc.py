@@ -29,19 +29,20 @@ class DubinsCar():
         space.add(body, self.shape)
     
     def step(self, action):
-        acc = action[0] * self.scale
+        acc = action[0] 
         alpha = action[1]
-        
-        v = self.shape.body.velocity.length + acc * self.dt
-        w = self.shape.body.angular_velocity + alpha * self.dt
 
-        self.shape.body.velocity = Vec2d(v, 0).rotated(self.shape.body.angle) 
-        self.shape.body.angular_velocity = w
+        F1 = Vec2d(acc, 0) * self.mass * self.scale
+        F2 = alpha * self.shape.body.moment / (2 * self.radius)
+        
+        self.shape.body.apply_force_at_local_point(F1, (0, 0))
+        self.shape.body.apply_force_at_local_point((0, -F2), (-self.radius, 0))
+        self.shape.body.apply_force_at_local_point((0, F2), (self.radius, 0))
         #pass
     
     def set_states(self, x, y, angle):
         self.shape.body.position = Vec2d( x * self.scale, y * self.scale )
         self.shape.body.angle = angle
-        self.shape.body.velocity = Vec2d(0.3, 0).rotated(self.shape.body.angle)
+        self.shape.body.velocity = Vec2d(0.1 * self.scale, 0).rotated(self.shape.body.angle)
         self.shape.body.angular_velocity = 0
 
