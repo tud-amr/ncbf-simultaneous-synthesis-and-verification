@@ -15,21 +15,30 @@ from collections import defaultdict
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using {device} device")
 
-system = dubins_car_acc
+########################### hyperparameters #############################
 
-data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=512, training_points_num=int(1e6))
+train_mode = 2
+system = inverted_pendulum_1
+default_root_dir = "./logs/CBF_logs/inverted_pendulum_1"
+checkpoint_dir = "logs/CBF_logs/inverted_pendulum_1/lightning_logs/version_8/checkpoints/epoch=199-step=2436.ckpt"
+grid_gap = torch.Tensor([0.2, 0.2])  
+
+
+########################################################
+
+data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=3, training_points_num=int(1e6), training_grid_gap=grid_gap, train_mode=train_mode)
 data_module.prepare_data()
-NN = NeuralNetwork.load_from_checkpoint("logs/CBF_logs/dubins_car_acc/lightning_logs/version_1/checkpoints/epoch=86-step=14181.ckpt", dynamic_system=system, data_module=data_module)
+data_module.set_dataset()
 
+NN = NeuralNetwork.load_from_checkpoint(checkpoint_dir, dynamic_system=system, data_module=data_module, train_mode=train_mode)
+NN0 = NeuralNetwork.load_from_checkpoint(checkpoint_dir, dynamic_system=system, data_module=data_module, train_mode=train_mode)
 # NN = NeuralNetwork(dynamic_system=inverted_pendulum_1, data_module=data_module, require_grad_descent_loss=True, fine_tune=False)
-# NN.set_previous_cbf(NN0.h)
+NN.set_previous_cbf(NN0.h)
 
 batch = next(iter(NN.data_module.train_dataloader()))
 
-NN.training_stage = 0
-NN.use_h0 = False
 
-batch[0] = torch.Tensor([2, 2, 0, 0.4, 0]).to(NN.device).reshape(-1,system.ns)
+batch[0] = torch.Tensor([2, 3.6]).to(NN.device).expand(3, system.ns)
 # s = torch.Tensor([-3, -3]).float().reshape((-1, NN.dynamic_system.ns)).to(device)
 
 # print(NN.nominal_controller(s))

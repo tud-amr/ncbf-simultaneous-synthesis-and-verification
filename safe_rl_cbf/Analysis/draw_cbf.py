@@ -55,12 +55,23 @@ def draw_cbf(system):
     s_unsafe_violation = torch.vstack(s_unsafe_violation)
     descent_violation = torch.vstack(descent_violation)
     inadmissible_boundary_state = torch.vstack(inadmissible_boundary_state)
+    
 
+    mat_contents = sio.loadmat("RA_result/extraOuts.mat")
+    # print(mat_contents['a0'].shape)
+
+    hVS_XData = mat_contents['a0']
+    hVS_YData = mat_contents['a1']
+    hVS_ZData = mat_contents['a2']
+    hVS0_XData = mat_contents['a3']
+    hVS0_YData = mat_contents['a4']
+    hVS0_ZData = mat_contents['a5']
 
     ########################## start to plot #############################
 
     ############################### plot shape of function h(x) ##############################
 
+   
     X = h_shape_s[:, x_index].detach().cpu().numpy()
     Y = h_shape_s[:, y_index].detach().cpu().numpy()
     H = h_shape_val.squeeze(dim=1).detach().cpu().numpy()
@@ -71,19 +82,38 @@ def draw_cbf(system):
     x = X[H_positive_mask]
     y = Y[H_positive_mask]
 
-
     plt.figure()
+
+    # Create contour lines or level curves using matpltlib.pyplt module
+    contours = plt.contourf(hVS_XData, hVS_YData, hVS_ZData, levels=[-0.1, 0, 1], colors=['w','y','w'], extend='both')
+
+    contours2 = plt.contour(hVS0_XData, hVS0_YData, hVS0_ZData, levels=[0], colors='grey', linewidth=5)
+
+
     plt.scatter(x, y, s=10, c='b')
 
     X = inadmissible_boundary_state[:, x_index].detach().cpu().numpy()
     Y = inadmissible_boundary_state[:, y_index].detach().cpu().numpy()
-    plt.scatter(X, Y, s=2, c='y')
+    # plt.scatter(X, Y, s=2, c='y')
 
     plt.xlabel(r"$x$")
     plt.ylabel(r"$y$")
     plt.xlim(domain_limit_lb[x_index], domain_limit_ub[x_index])
     plt.ylim(domain_limit_lb[y_index], domain_limit_ub[y_index])
     plt.title("shape of 0-superlevel set")
+
+
+    legend_elements = [
+                        Line2D([0], [0], color='grey', lw=2, label='Obstacles'),
+                        Patch(facecolor='y', edgecolor='y',
+                            label='Invariant Set from RA'),
+                        Patch(facecolor='b', edgecolor='b',
+                            label='Invariant Set from neural CBF')
+                    ]
+
+    plt.legend(handles=legend_elements, bbox_to_anchor=(1, 1.1),loc='upper right')
+
+
     plt.savefig("logs/test_fig/shape_of_cbf.png")
 
     ############################### plot unsafe violation ##############################
@@ -99,7 +129,7 @@ def draw_cbf(system):
 
     plt.scatter(x, y, s=10, c='b')
     plt.scatter(X_descent, Y_descent, s=10, c='r')
-    plt.scatter(X, Y, s=2, c='y')
+    plt.scatter(X, Y, s=1, c='y')
 
 
     plt.xlabel(r"$x$")
@@ -109,3 +139,42 @@ def draw_cbf(system):
     plt.title("shape of 0-superlevel set")
 
     plt.savefig("logs/test_fig/descent_violation.png")
+
+    ############################### plot training points ##############################
+    s_training = torch.load("s_training.pt")
+   
+    X = h_shape_s[:, x_index].detach().cpu().numpy()
+    Y = h_shape_s[:, y_index].detach().cpu().numpy()
+    H = h_shape_val.squeeze(dim=1).detach().cpu().numpy()
+
+    H_positive_mask = H > 0
+
+
+    x = X[H_positive_mask]
+    y = Y[H_positive_mask]
+
+    plt.figure()
+
+    # Create contour lines or level curves using matpltlib.pyplt module
+    contours = plt.contourf(hVS_XData, hVS_YData, hVS_ZData, levels=[-0.1, 0, 1], colors=['w','y','w'], extend='both')
+
+    contours2 = plt.contour(hVS0_XData, hVS0_YData, hVS0_ZData, levels=[0], colors='grey', linewidth=5)
+
+
+    plt.scatter(x, y, s=10, c='b')
+
+    X = inadmissible_boundary_state[:, x_index].detach().cpu().numpy()
+    Y = inadmissible_boundary_state[:, y_index].detach().cpu().numpy()
+    # plt.scatter(X, Y, s=2, c='y')
+
+
+    plt.scatter(s_training[:,0], s_training[:,1], marker='X', s=10, c='k')
+
+
+    plt.xlabel(r"$x$")
+    plt.ylabel(r"$y$")
+    plt.xlim(domain_limit_lb[x_index], domain_limit_ub[x_index])
+    plt.ylim(domain_limit_lb[y_index], domain_limit_ub[y_index])
+    plt.title("shape of 0-superlevel set")
+
+    plt.savefig("logs/test_fig/shape_of_cbf_with_training_points.png")

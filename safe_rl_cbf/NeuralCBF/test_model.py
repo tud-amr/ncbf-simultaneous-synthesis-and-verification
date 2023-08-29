@@ -13,9 +13,9 @@ from safe_rl_cbf.Analysis.draw_cbf import draw_cbf
 
 ############################# hyperparameters #############################
 
-system = two_vehicle_avoidance
-checkpoint_path = "logs/CBF_logs/two_vehicle_avoidance/lightning_logs/version_1/checkpoints/epoch=869-step=141810.ckpt"
-data_module = TestingDataModule(system=system, test_batch_size=512, test_points_num=int(1e2), test_index={0: None, 1: None, 2: -1.7, 3: 1, 4: 1, 5: 0})
+system = inverted_pendulum_1
+checkpoint_path = "logs/CBF_logs/inverted_pendulum_2/lightning_logs/version_3/checkpoints/epoch=199-step=9770.ckpt"
+data_module = TestingDataModule(system=system, test_batch_size=1024, test_points_num=int(1e3), test_index={0: None, 1: None})
 
 
 
