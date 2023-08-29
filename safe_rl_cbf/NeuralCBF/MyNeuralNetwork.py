@@ -86,14 +86,17 @@ class NeuralNetwork(pl.LightningModule):
                 nn.Tanh(),
                 nn.Linear(256,1)
             )
-        
-        # self.Q = nn.Sequential(
-        #         nn.Linear(self.dynamic_system.ns + self.dynamic_system.nu, 128),
+
+        # self.h = nn.Sequential(
+        #         nn.Linear(self.dynamic_system.ns, 256),
         #         nn.Tanh(),
-        #         nn.Linear(128, 128),
+        #         nn.Linear(256, 256),
         #         nn.Tanh(),
-        #         nn.Linear(128, 1),
+        #         nn.Linear(256, 256),
+        #         nn.Tanh(),
+        #         nn.Linear(256,1)
         #     )
+        
 
         # self.h = Transformer(self.dynamic_system.ns, 160)
 

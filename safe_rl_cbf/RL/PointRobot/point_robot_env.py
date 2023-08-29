@@ -124,7 +124,7 @@ class PointRobotEnv(gym.Env):
             #     raise Exception(f"Current state [{self.state[0]}, {self.state[1]}] is unsafe, h(s)={hs}")
             
             u_ref = torch.from_numpy(action).float().reshape((-1,self.h.dynamic_system.nu)).to(device)            
-            u_result, r_result = self.h.solve_CLF_QP(s, gradh, u_ref, epsilon=0.1)
+            u_result, r_result = self.h.solve_CLF_QP(s, gradh, u_ref, epsilon=0.15)
 
             if r_result > 0.0:
                 self.break_safety += 1
@@ -167,6 +167,7 @@ class PointRobotEnv(gym.Env):
 
         if np.abs(obs[0]) == 0 or np.abs(obs[1]) == 0 or np.abs(obs[0])==1 or np.abs(obs[1])==1:
             # reach the boundary
+            print("collision!!!!!!!!!!!!")
             reward = -10
             done = True
         elif np.abs(obs[2]) == 1 or np.abs(obs[3]) == 1:
@@ -179,6 +180,7 @@ class PointRobotEnv(gym.Env):
             self.done = True
         
         if np.abs(x - 5) < 1 + self.radius and np.abs(y - 5) < 1 + self.radius:
+            print("collision!!!!!!!!!!!!")
             reward = -10
             done = True
 
@@ -202,8 +204,8 @@ class PointRobotEnv(gym.Env):
 
     def reset(self):
         self.current_time_step = 0
-        self.x_init = random.uniform(0, self.x_max)
-        self.y_init = random.uniform(0, self.y_max)
+        self.x_init = random.uniform(2, 3)
+        self.y_init = random.uniform(5, 6)
         self.point_robot.set_states(self.x_init, self.y_init)
         return self.get_observation()
 

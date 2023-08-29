@@ -131,8 +131,9 @@ class TwoVehicleAvoidanceEnv(gym.Env):
             gradh = self.h.jacobian(hs, s)
             if hs < 0:
                 # raise Exception(f"Current state [{self.state[0]}, {self.state[1]}] is unsafe, h(s)={hs}")
-                print(f"Current state [{self.ego_state}, {self.component_state}] is unsafe, h(s)={hs}")
-            
+                # print(f"Current state [{self.ego_state}, {self.component_state}] is unsafe, h(s)={hs}")
+                pass
+
             u_ref = torch.from_numpy(action).float().reshape((-1,self.h.dynamic_system.nu)).to(device)            
             u_result, r_result = self.h.solve_CLF_QP(s, gradh, u_ref, epsilon=0.1)
 
@@ -231,7 +232,7 @@ class TwoVehicleAvoidanceEnv(gym.Env):
         self.space.debug_draw(self.draw_options)
 
         target_pos_in_screen = (self.x_target * self.scale, self.y_max * self.scale - self.y_target * self.scale)
-        pygame.draw.circle(self.screen, (0, 255, 0), target_pos_in_screen, self.target_radius * self.scale)
+        # pygame.draw.circle(self.screen, (0, 255, 0), target_pos_in_screen, self.target_radius * self.scale)
         self.space.step(self.dt)
         pygame.display.flip()
         self.clock.tick(1/self.dt)

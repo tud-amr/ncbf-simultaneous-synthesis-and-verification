@@ -7,7 +7,7 @@ import pygame
 
 
 class PointRobot():
-    def __init__(self, mass, radius,state, space, scale, dt, color=(66, 135, 245)):
+    def __init__(self, mass, radius,state, space, scale, dt, color=(0, 255, 0)):
         self.mass = mass
         self.scale  = scale
         self.dt = dt
