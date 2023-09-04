@@ -1065,7 +1065,7 @@ class NeuralNetwork(pl.LightningModule):
         ub_j_lb_dx = cp.Parameter(self.dynamic_system.ns)
 
         # define objective
-        objective_expression = cp.sum(X) + 0.5 * h
+        objective_expression = cp.sum(X) + self.clf_lambda * h
         objective = cp.Minimize(objective_expression)
 
        
@@ -1079,9 +1079,9 @@ class NeuralNetwork(pl.LightningModule):
         constraints.append(lb_h <= h)
         constraints.append(h <= ub_h)
         constraints.append(X - cp.multiply(lb_j, dx) - cp.multiply(lb_dx, J) >= - lb_j_lb_dx )
-        constraints.append(X - cp.multiply(lb_j, dx) - cp.multiply(ub_dx, J) >= - ub_j_up_dx )
-        constraints.append(X - cp.multiply(lb_j, dx) - cp.multiply(ub_dx, J) >= - lb_j_up_dx )
-        constraints.append(X - cp.multiply(lb_dx, J) - cp.multiply(ub_j, dx) >= - ub_j_lb_dx )
+        constraints.append(X - cp.multiply(ub_j, dx) - cp.multiply(ub_dx, J) >= - ub_j_up_dx )
+        constraints.append(X - cp.multiply(lb_j, dx) - cp.multiply(ub_dx, J) <= - lb_j_up_dx )
+        constraints.append(X - cp.multiply(lb_dx, J) - cp.multiply(ub_j, dx) <= - ub_j_lb_dx )
         
 
         problem = cp.Problem(objective, constraints)

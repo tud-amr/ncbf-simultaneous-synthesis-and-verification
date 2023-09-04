@@ -11,6 +11,7 @@ import numpy as np
 import pymunk
 from pymunk import Vec2d
 import pymunk.pygame_util
+import time
 from safe_rl_cbf.RL.PointRobot.PointRobot import PointRobot
 
 class PointRobotEnv(gym.Env):
@@ -21,7 +22,7 @@ class PointRobotEnv(gym.Env):
         the action is [a_x, a_y]
         """
        
-
+        
         # state property
         self.x_max = 8.0
         self.y_max = 8.0    
@@ -71,8 +72,12 @@ class PointRobotEnv(gym.Env):
         self.init_agent()
         self.init_obstacles()
 
+        self.break_safety = 0
+        self.epoch_trajectory = []
+        self.training_trajectories = []
         self.h = None
         self.use_cbf = False
+        self.prefix = "without_CBF_"
 
     def init_pygame(self):
         pygame.init()
@@ -105,9 +110,10 @@ class PointRobotEnv(gym.Env):
     def set_barrier_function(self, h):
         self.h = h
         self.use_cbf = True
+        self.prefix = "with_CBF_"
 
     def step(self, action):
-        
+        start_time = time.time()
         reward = 0
         action = action 
 
@@ -124,7 +130,7 @@ class PointRobotEnv(gym.Env):
             #     raise Exception(f"Current state [{self.state[0]}, {self.state[1]}] is unsafe, h(s)={hs}")
             
             u_ref = torch.from_numpy(action).float().reshape((-1,self.h.dynamic_system.nu)).to(device)            
-            u_result, r_result = self.h.solve_CLF_QP(s, gradh, u_ref, epsilon=0.15)
+            u_result, r_result = self.h.solve_CLF_QP(s, gradh, u_ref, epsilon=0.3)
 
             if r_result > 0.0:
                 self.break_safety += 1
@@ -155,37 +161,65 @@ class PointRobotEnv(gym.Env):
 
         distance_to_target_x = self.x_target - x
         distance_to_target_y = self.y_target - y
+        distance_to_target = np.sqrt(distance_to_target_x ** 2 + distance_to_target_y ** 2)
         heading_to_target = self.normalize_angle(np.arctan2(distance_to_target_y, distance_to_target_x))
         heading = self.normalize_angle(np.arctan2(v_y, v_x))
         heading_error = heading_to_target - heading
 
 
-        reward = (1.0 / (  np.abs(distance_to_target_x) + 0.1 )) + (1.0 / (  np.abs(distance_to_target_y) + 0.1 )) - 0.1 * np.abs(heading_error)
-        
+        # reward += (1.0 / (  np.abs(distance_to_target_x) + 0.1 )) + (1.0 / (  np.abs(distance_to_target_y) + 0.1 )) - 0.01 * np.abs(heading_error)
+        reward += - 0.1 * distance_to_target -  0.1 * np.abs(heading_error) 
         
         done = False
+        info = {}
+        self.epoch_trajectory.append( np.array([[x], [y]]) )
+
 
         if np.abs(obs[0]) == 0 or np.abs(obs[1]) == 0 or np.abs(obs[0])==1 or np.abs(obs[1])==1:
             # reach the boundary
             print("collision!!!!!!!!!!!!")
-            reward = -10
+            reward = -1000
+            self.break_safety += 1
             done = True
-        elif np.abs(obs[2]) == 1 or np.abs(obs[3]) == 1:
+            self.training_trajectories.append( {"traj": np.hstack(self.epoch_trajectory), "collision": True})
+            self.epoch_trajectory.clear()
+           
+
+        elif np.abs(x - 5) < 1 + self.radius and np.abs(y - 5) < 1 + self.radius:
+            print("collision!!!!!!!!!!!!")
+            reward = -1000
+            self.break_safety += 1
+            done = True
+            self.training_trajectories.append( {"traj": np.hstack(self.epoch_trajectory), "collision": True})
+            self.epoch_trajectory.clear()      
+
+        elif np.linalg.norm(np.array([x, y]) - np.array([self.x_target, self.y_target])) < 0.2:
+            print("reach goal!!!!!!!!!!!!")
+            reward = 1000
+            done = True
+            self.training_trajectories.append( {"traj": np.hstack(self.epoch_trajectory), "collision": False})
+            self.epoch_trajectory.clear() 
+             
+        
+        elif self.current_time_step > self.max_time_steps:
+            self.done = True
+            self.current_time_step = 0
+            self.training_trajectories.append( {"traj": np.hstack(self.epoch_trajectory), "collision": False})
+            self.epoch_trajectory.clear()
+        
+        else:
+            pass
+
+        if np.abs(obs[2]) == 1 or np.abs(obs[3]) == 1:
             # reach the maximum velocity or angular velocity
             print("reach the maximum velocity or angular velocity")
-            reward = -10
-            done = True
+            reward += -1    
 
-        if self.current_time_step == self.max_time_steps:
-            self.done = True
-        
-        if np.abs(x - 5) < 1 + self.radius and np.abs(y - 5) < 1 + self.radius:
-            print("collision!!!!!!!!!!!!")
-            reward = -10
-            done = True
+        self.reward = reward
 
-        
-        info = {}
+        end_time = time.time()
+        self.step_executing_time = end_time - start_time
+
         return obs, reward, done, info
     
     def get_observation(self):
@@ -203,9 +237,9 @@ class PointRobotEnv(gym.Env):
         return np.array([x_obs, y_obs, v_x_obs, v_y_obs], dtype=np.float32)
 
     def reset(self):
-        self.current_time_step = 0
-        self.x_init = random.uniform(2, 3)
-        self.y_init = random.uniform(5, 6)
+        
+        self.x_init = 2.5 # random.uniform(2, 3)
+        self.y_init = 5.5 # random.uniform(5, 6)
         self.point_robot.set_states(self.x_init, self.y_init)
         return self.get_observation()
 

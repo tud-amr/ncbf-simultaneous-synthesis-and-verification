@@ -13,14 +13,14 @@ render_sim = True #if True, a graphic is generated
 
 env = PointRobotEnv(render_sim=render_sim)
 
-model = PPO.load("point_robot")
+model = PPO.load("point_robot_without_cbf")
 model.set_env(env)
 
 data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=512, training_points_num=int(1e6))
-NN = NeuralNetwork.load_from_checkpoint("saved_models/point_robot_dist/checkpoints/epoch=356-step=58191.ckpt", dynamic_system=system, data_module=data_module )
+NN = NeuralNetwork.load_from_checkpoint("saved_models/point_robot/checkpoints/epoch=68-step=11247.ckpt", dynamic_system=system, data_module=data_module )
 NN.to(device)
 
-env.set_barrier_function(NN)
+# env.set_barrier_function(NN)
 
 obs = env.reset()
 
@@ -35,11 +35,13 @@ try:
             env.render()
         if done:
             obs = env.reset()
+            # pass
         if env.current_time_step > 700:
 
             # random_action = np.random.rand(2) - 0.5
             # print("random_action", random_action)
-            print("Time out")
-            obs = env.reset()
+            # print("Time out")
+            # obs = env.reset()
+            pass
 finally:
     env.close()
