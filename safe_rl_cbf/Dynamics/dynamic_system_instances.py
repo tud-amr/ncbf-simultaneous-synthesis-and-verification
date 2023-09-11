@@ -200,13 +200,21 @@ control_upper_bd = -control_lower_bd
     
     
 def rou(s: torch.Tensor) -> torch.Tensor:
-    rou_1 = torch.unsqueeze(s[:, 0] + 0, dim=1)
-    rou_2 = torch.unsqueeze( - s[:, 0] + 8, dim=1)
-    rou_3 = torch.unsqueeze(s[:, 1] + 0, dim=1)
-    rou_4 = torch.unsqueeze( -s[:, 1] + 8, dim=1)
-    rou_5 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1.8
+    
+    rou_1 = torch.unsqueeze(s[:, 0] - 0.1, dim=1)
+    rou_2 = torch.unsqueeze( - s[:, 0] + 7.9, dim=1)
+    rou_3 = torch.unsqueeze(s[:, 1] - 0.1, dim=1)
+    rou_4 = torch.unsqueeze( -s[:, 1] + 7.9, dim=1)
+    rou_5 = torch.unsqueeze( -s[:, 2] + 1, dim=1)
+    rou_6 = torch.unsqueeze(s[:, 2] + 1, dim=1)
+    rou_7 = torch.unsqueeze( -s[:, 3] + 1, dim=1)
+    rou_8 = torch.unsqueeze(s[:, 3] + 1, dim=1)
 
-    return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_5) ) 
+    dist = torch.abs( s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2) )
+    rou_9 = torch.max(dist[:, 0], dist[:, 1]).reshape(-1, 1) - 1.1
+    # rou_9 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1.9
+
+    return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_5, rou_6, rou_7, rou_8, rou_9) )
 
 def rou_n(s: torch.Tensor) -> torch.Tensor:
     s_norm = torch.norm(s, dim=1, keepdim=True)

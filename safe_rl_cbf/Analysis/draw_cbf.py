@@ -92,8 +92,8 @@ def draw_cbf(system):
 
     plt.scatter(x, y, s=10, c='b')
 
-    X = inadmissible_boundary_state[:, x_index].detach().cpu().numpy()
-    Y = inadmissible_boundary_state[:, y_index].detach().cpu().numpy()
+    X_in = inadmissible_boundary_state[:, x_index].detach().cpu().numpy()
+    Y_in = inadmissible_boundary_state[:, y_index].detach().cpu().numpy()
     # plt.scatter(X, Y, s=2, c='y')
 
     plt.xlabel(r"$x$")
@@ -116,7 +116,15 @@ def draw_cbf(system):
 
     plt.savefig("logs/test_fig/shape_of_cbf.png")
 
-    ############################### plot unsafe violation ##############################
+
+    fig1,ax1=plt.subplots(1,1)
+    cp = ax1.contourf(X.reshape((math.gcd(X.shape[0], 1000), -1)), Y.reshape((math.gcd(X.shape[0], 1000), -1)), H.reshape((math.gcd(X.shape[0], 1000), -1)))
+    fig1.colorbar(cp) # Add a colorbar to a plot
+    ax1.set_title('Filled Contours Plot')
+    plt.xlabel(r"$\theta$")
+    plt.ylabel(r"$\dot{\theta}$")
+    ax1.set_title("contour of CBF")
+    plt.savefig("logs/test_fig/contour_of_cbf.png")
 
     ############################### plot descent violation ##############################
 
@@ -129,7 +137,7 @@ def draw_cbf(system):
 
     plt.scatter(x, y, s=10, c='b')
     plt.scatter(X_descent, Y_descent, s=10, c='r')
-    plt.scatter(X, Y, s=1, c='y')
+    plt.scatter(X_in, Y_in, s=1, c='y')
 
 
     plt.xlabel(r"$x$")
@@ -141,40 +149,44 @@ def draw_cbf(system):
     plt.savefig("logs/test_fig/descent_violation.png")
 
     ############################### plot training points ##############################
-    s_training = torch.load("s_training.pt")
+    # s_training = torch.load("s_training.pt")
    
-    X = h_shape_s[:, x_index].detach().cpu().numpy()
-    Y = h_shape_s[:, y_index].detach().cpu().numpy()
-    H = h_shape_val.squeeze(dim=1).detach().cpu().numpy()
+    # X = h_shape_s[:, x_index].detach().cpu().numpy()
+    # Y = h_shape_s[:, y_index].detach().cpu().numpy()
+    # H = h_shape_val.squeeze(dim=1).detach().cpu().numpy()
 
-    H_positive_mask = H > 0
-
-
-    x = X[H_positive_mask]
-    y = Y[H_positive_mask]
-
-    plt.figure()
-
-    # Create contour lines or level curves using matpltlib.pyplt module
-    contours = plt.contourf(hVS_XData, hVS_YData, hVS_ZData, levels=[-0.1, 0, 1], colors=['w','y','w'], extend='both')
-
-    contours2 = plt.contour(hVS0_XData, hVS0_YData, hVS0_ZData, levels=[0], colors='grey', linewidth=5)
+    # H_positive_mask = H > 0
 
 
-    plt.scatter(x, y, s=10, c='b')
+    # x = X[H_positive_mask]
+    # y = Y[H_positive_mask]
 
-    X = inadmissible_boundary_state[:, x_index].detach().cpu().numpy()
-    Y = inadmissible_boundary_state[:, y_index].detach().cpu().numpy()
-    # plt.scatter(X, Y, s=2, c='y')
+    # plt.figure()
+
+    # # Create contour lines or level curves using matpltlib.pyplt module
+    # contours = plt.contourf(hVS_XData, hVS_YData, hVS_ZData, levels=[-0.1, 0, 1], colors=['w','y','w'], extend='both')
+
+    # contours2 = plt.contour(hVS0_XData, hVS0_YData, hVS0_ZData, levels=[0], colors='grey', linewidth=5)
 
 
-    plt.scatter(s_training[:,0], s_training[:,1], marker='X', s=10, c='k')
+    # plt.scatter(x, y, s=10, c='b')
+
+    # X = inadmissible_boundary_state[:, x_index].detach().cpu().numpy()
+    # Y = inadmissible_boundary_state[:, y_index].detach().cpu().numpy()
+    # # plt.scatter(X, Y, s=2, c='y')
 
 
-    plt.xlabel(r"$x$")
-    plt.ylabel(r"$y$")
-    plt.xlim(domain_limit_lb[x_index], domain_limit_ub[x_index])
-    plt.ylim(domain_limit_lb[y_index], domain_limit_ub[y_index])
-    plt.title("shape of 0-superlevel set")
+    # plt.scatter(s_training[:,0], s_training[:,1], marker='X', s=10, c='k')
 
-    plt.savefig("logs/test_fig/shape_of_cbf_with_training_points.png")
+
+    # plt.xlabel(r"$x$")
+    # plt.ylabel(r"$y$")
+    # plt.xlim(domain_limit_lb[x_index], domain_limit_ub[x_index])
+    # plt.ylim(domain_limit_lb[y_index], domain_limit_ub[y_index])
+    # plt.title("shape of 0-superlevel set")
+
+    # plt.savefig("logs/test_fig/shape_of_cbf_with_training_points.png")
+
+
+########################## plot contour of h(x) #############################
+
