@@ -1,27 +1,35 @@
 import numpy as np
 import math
 import matplotlib.pyplot as plt
-import json
-
-violation_with_CBF_file_path = "./masterthesis_test/stable_baseline_logs/with_CBF_run1_5/train_reward_with_CBF.json"
-violation_without_CBF_file_path = "./masterthesis_test/stable_baseline_logs/without_CBF_run1_1/training_reward_without_CBF.json"
+import pickle
 
 
-f1 = open(violation_with_CBF_file_path)
-data1 = json.load(f1)
+reward_with_CBF_file_path = "logs/stable_baseline_logs/point_robot_new/run1/with_CBF_reward.pickle"
+reward_without_CBF_file_path = "logs/stable_baseline_logs/point_robot_new/run0/without_CBF_reward.pickle"
 
-f2 = open(violation_without_CBF_file_path)
-data2 = json.load(f2)
+
+with open(reward_with_CBF_file_path, 'rb') as f:
+    # The protocol version used is detected automatically, so we do not
+    # have to specify it.
+    data1 = pickle.load(f)
+
+
+with open(reward_without_CBF_file_path, 'rb') as f:
+    # The protocol version used is detected automatically, so we do not
+    # have to specify it.
+    data2 = pickle.load(f)
 
 data1 = np.array(data1)
 data2 = np.array(data2)
 print(data1.shape)
 print(data2.shape)
 
+epoch_num_1 = np.arange(data1.shape[0])
+epoch_num_2 = np.arange(data2.shape[0])
 
 plt.figure()
-plt.plot(data1[:, 1], data1[:, 2], color='b', linewidth='2', label='with CBF')
-plt.plot(data2[:, 1], data2[:, 2], color='r', linewidth='2', label='without CBF')
+plt.plot(epoch_num_1, data1, color='b', linewidth='2', label='with CBF')
+plt.plot(epoch_num_2, data2, color='r', linewidth='2', label='without CBF')
 plt.legend()
 plt.xlabel("time-step")
 plt.ylabel("reward")

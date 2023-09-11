@@ -52,7 +52,7 @@ class CustomCallback(BaseCallback):
         """
         print("!!!!!!!!!!!!!!!start another rollout!!!!!!!!")
         env = self.training_env.envs[0]
-        # env.epoch_trajectory.clear()
+        env.epoch_reward.clear()
         
         pass
 
@@ -80,6 +80,8 @@ class CustomCallback(BaseCallback):
         """
         env = self.training_env.envs[0]
         # env.training_trajectories.append( np.hstack(env.epoch_trajectory) )
+        average_reward = np.mean(env.epoch_reward)
+        env.training_rewards.append(average_reward)
         pass
 
     def _on_training_end(self) -> None:
@@ -96,5 +98,9 @@ class CustomCallback(BaseCallback):
         trajectory_save_dir = self.log_dir + "/" + env.prefix +  "trajectory.pickle"
         with open(trajectory_save_dir, 'wb') as f:
             pickle.dump(env.training_trajectories, f, pickle.HIGHEST_PROTOCOL)
+
+        reward_save_dir = self.log_dir + "/" + env.prefix +  "reward.pickle"
+        with open(reward_save_dir, 'wb') as f:
+            pickle.dump(env.training_rewards, f, pickle.HIGHEST_PROTOCOL)
         
         pass

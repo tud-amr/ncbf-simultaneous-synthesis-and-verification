@@ -74,7 +74,9 @@ class PointRobotEnv(gym.Env):
 
         self.break_safety = 0
         self.epoch_trajectory = []
+        self.epoch_reward = []
         self.training_trajectories = []
+        self.training_rewards = []
         self.h = None
         self.use_cbf = False
         self.prefix = "without_CBF_"
@@ -143,7 +145,18 @@ class PointRobotEnv(gym.Env):
         else:
             u = action
 
-        
+        obs = self.get_observation()
+        x, y, v_x, v_y = self.state
+
+        # if obs[2] == 1:
+        #     u[0] = np.clip(u[0], -self.max_a_x, 0)
+        # if obs[3] == 1:
+        #     u[1] = np.clip(u[1], -self.max_a_x, 0)
+        # if obs[2] == -1:
+        #     u[0] = np.clip(u[0], 0, self.max_a_x)
+        # if obs[3] == -1:
+        #     u[1] = np.clip(u[1], 0, self.max_a_x)
+           
         F1 = u[0] * self.point_robot.mass * self.scale
         F2 = u[1] * self.point_robot.mass * self.scale
 
@@ -156,8 +169,7 @@ class PointRobotEnv(gym.Env):
         self.current_time_step += 1
 
 
-        obs = self.get_observation()
-        x, y, v_x, v_y = self.state
+        
 
         distance_to_target_x = self.x_target - x
         distance_to_target_y = self.y_target - y
@@ -181,8 +193,10 @@ class PointRobotEnv(gym.Env):
             reward = -1000
             self.break_safety += 1
             done = True
+            
             self.training_trajectories.append( {"traj": np.hstack(self.epoch_trajectory), "collision": True})
             self.epoch_trajectory.clear()
+            
            
 
         elif np.abs(x - 5) < 1 + self.radius and np.abs(y - 5) < 1 + self.radius:
@@ -191,14 +205,16 @@ class PointRobotEnv(gym.Env):
             self.break_safety += 1
             done = True
             self.training_trajectories.append( {"traj": np.hstack(self.epoch_trajectory), "collision": True})
-            self.epoch_trajectory.clear()      
+            self.epoch_trajectory.clear()
+            
 
         elif np.linalg.norm(np.array([x, y]) - np.array([self.x_target, self.y_target])) < 0.2:
             print("reach goal!!!!!!!!!!!!")
-            reward = 1000
+            reward = 100
             done = True
             self.training_trajectories.append( {"traj": np.hstack(self.epoch_trajectory), "collision": False})
-            self.epoch_trajectory.clear() 
+            self.epoch_trajectory.clear()
+           
              
         
         elif self.current_time_step > self.max_time_steps:
@@ -206,16 +222,15 @@ class PointRobotEnv(gym.Env):
             self.current_time_step = 0
             self.training_trajectories.append( {"traj": np.hstack(self.epoch_trajectory), "collision": False})
             self.epoch_trajectory.clear()
+           
         
         else:
             pass
 
-        if np.abs(obs[2]) == 1 or np.abs(obs[3]) == 1:
-            # reach the maximum velocity or angular velocity
-            print("reach the maximum velocity or angular velocity")
-            reward += -1    
+        
 
         self.reward = reward
+        self.epoch_reward.append(reward)
 
         end_time = time.time()
         self.step_executing_time = end_time - start_time
