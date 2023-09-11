@@ -137,7 +137,10 @@ class InvertedPendulum(ControlAffineSystem):
         for i in range(number_of_samples):
             sample = (x_u - x_l) * torch.rand_like(x_l) + x_l
             # print(f"sample  is {sample}")
-            dxdt = self.dsdt(sample, u)
+            try:
+                dxdt = self.dsdt(sample, u=u)
+            except:
+                print(f"u is {u}")
             dxdt_list.append(dxdt)
 
         dxdt = torch.stack(dxdt_list, dim=0)
