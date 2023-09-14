@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 import pickle
 
 
-reward_with_CBF_file_path = "logs/stable_baseline_logs/point_robot_new/run1/with_CBF_reward.pickle"
-reward_without_CBF_file_path = "logs/stable_baseline_logs/point_robot_new/run0/without_CBF_reward.pickle"
+reward_with_CBF_file_path = "logs/stable_baseline_logs/point_robot_with/run5/with_CBF_reward.pickle"
+reward_without_CBF_file_path = "logs/stable_baseline_logs/point_robot_without/run5/without_CBF_reward.pickle"
 
 
 with open(reward_with_CBF_file_path, 'rb') as f:

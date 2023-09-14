@@ -128,11 +128,17 @@ class PointRobotEnv(gym.Env):
             
             hs = self.h(s)
             gradh = self.h.jacobian(hs, s)
-            # if hs < 0:
-            #     raise Exception(f"Current state [{self.state[0]}, {self.state[1]}] is unsafe, h(s)={hs}")
+            
             
             u_ref = torch.from_numpy(action).float().reshape((-1,self.h.dynamic_system.nu)).to(device)            
-            u_result, r_result = self.h.solve_CLF_QP(s, gradh, u_ref, epsilon=0.3)
+            u_result, r_result = self.h.solve_CLF_QP(s, gradh, u_ref, epsilon=0.25)
+
+           
+            u = u_result.cpu().numpy().flatten()
+            if hs < 0:
+                # print(f"Current state [{self.state}] is unsafe, h(s)={hs}, u={u}")
+                # raise Exception(f"Current state [{self.state[0]}, {self.state[1]}] is unsafe, h(s)={hs}")
+                pass
 
             if r_result > 0.0:
                 self.break_safety += 1
@@ -141,21 +147,20 @@ class PointRobotEnv(gym.Env):
             if torch.abs( torch.norm(u_result - u_ref) ) > 0.1:
                 reward += -15
 
-            u = u_result.cpu().numpy().flatten()
         else:
             u = action
 
         obs = self.get_observation()
         x, y, v_x, v_y = self.state
 
-        # if obs[2] == 1:
-        #     u[0] = np.clip(u[0], -self.max_a_x, 0)
-        # if obs[3] == 1:
-        #     u[1] = np.clip(u[1], -self.max_a_x, 0)
-        # if obs[2] == -1:
-        #     u[0] = np.clip(u[0], 0, self.max_a_x)
-        # if obs[3] == -1:
-        #     u[1] = np.clip(u[1], 0, self.max_a_x)
+        if obs[2] == 1:
+            u[0] = np.clip(u[0], -self.max_a_x, 0)
+        if obs[3] == 1:
+            u[1] = np.clip(u[1], -self.max_a_x, 0)
+        if obs[2] == -1:
+            u[0] = np.clip(u[0], 0, self.max_a_x)
+        if obs[3] == -1:
+            u[1] = np.clip(u[1], 0, self.max_a_x)
            
         F1 = u[0] * self.point_robot.mass * self.scale
         F2 = u[1] * self.point_robot.mass * self.scale
@@ -189,18 +194,20 @@ class PointRobotEnv(gym.Env):
 
         if np.abs(obs[0]) == 0 or np.abs(obs[1]) == 0 or np.abs(obs[0])==1 or np.abs(obs[1])==1:
             # reach the boundary
-            print("collision!!!!!!!!!!!!")
+            print("collision with wall!!!!!!!!!!!!")
             reward = -1000
             self.break_safety += 1
             done = True
             
             self.training_trajectories.append( {"traj": np.hstack(self.epoch_trajectory), "collision": True})
             self.epoch_trajectory.clear()
+
+            print(f"state is {self.state}")
             
            
 
         elif np.abs(x - 5) < 1 + self.radius and np.abs(y - 5) < 1 + self.radius:
-            print("collision!!!!!!!!!!!!")
+            print("collision with obstacle!!!!!!!!!!!!")
             reward = -1000
             self.break_safety += 1
             done = True
@@ -210,7 +217,7 @@ class PointRobotEnv(gym.Env):
 
         elif np.linalg.norm(np.array([x, y]) - np.array([self.x_target, self.y_target])) < 0.2:
             print("reach goal!!!!!!!!!!!!")
-            reward = 100
+            reward = 1000
             done = True
             self.training_trajectories.append( {"traj": np.hstack(self.epoch_trajectory), "collision": False})
             self.epoch_trajectory.clear()

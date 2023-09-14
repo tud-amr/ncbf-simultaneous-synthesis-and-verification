@@ -17,10 +17,10 @@ model = PPO.load("point_robot_without_cbf")
 model.set_env(env)
 
 data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=512, training_points_num=int(1e6))
-NN = NeuralNetwork.load_from_checkpoint("saved_models/point_robot/checkpoints/epoch=68-step=11247.ckpt", dynamic_system=system, data_module=data_module )
+NN = NeuralNetwork.load_from_checkpoint("saved_models/point_robot_2/checkpoints/epoch=85-step=5402.ckpt", dynamic_system=system, data_module=data_module )
 NN.to(device)
 
-# env.set_barrier_function(NN)
+env.set_barrier_function(NN)
 
 obs = env.reset()
 

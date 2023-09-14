@@ -117,15 +117,6 @@ def draw_cbf(system):
     plt.savefig("logs/test_fig/shape_of_cbf.png")
 
 
-    fig1,ax1=plt.subplots(1,1)
-    cp = ax1.contourf(X.reshape((math.gcd(X.shape[0], 1000), -1)), Y.reshape((math.gcd(X.shape[0], 1000), -1)), H.reshape((math.gcd(X.shape[0], 1000), -1)))
-    fig1.colorbar(cp) # Add a colorbar to a plot
-    ax1.set_title('Filled Contours Plot')
-    plt.xlabel(r"$\theta$")
-    plt.ylabel(r"$\dot{\theta}$")
-    ax1.set_title("contour of CBF")
-    plt.savefig("logs/test_fig/contour_of_cbf.png")
-
     ############################### plot descent violation ##############################
 
     X_descent = descent_violation[:, x_index].detach().cpu().numpy()
@@ -190,3 +181,12 @@ def draw_cbf(system):
 
 ########################## plot contour of h(x) #############################
 
+
+    fig1,ax1=plt.subplots(1,1)
+    cp = ax1.contourf(X.reshape((math.gcd(X.shape[0], 1000), -1)), Y.reshape((math.gcd(X.shape[0], 1000), -1)), H.reshape((math.gcd(X.shape[0], 1000), -1)))
+    fig1.colorbar(cp) # Add a colorbar to a plot
+    ax1.set_title('Filled Contours Plot')
+    plt.xlabel(r"$\theta$")
+    plt.ylabel(r"$\dot{\theta}$")
+    ax1.set_title("contour of CBF")
+    plt.savefig("logs/test_fig/contour_of_cbf.png")
