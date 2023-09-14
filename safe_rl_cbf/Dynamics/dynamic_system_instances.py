@@ -190,10 +190,10 @@ dubins_car_acc.set_nominal_state_constraints(rou_n)
 
 ######################## create point robot object ######################
 
-point_robot = PointRobot()
+point_robot = PointRobot(dt=0.1)
 
-domain_lower_bd = torch.Tensor([-1, -1, -1.2, -1.2]).float()
-domain_upper_bd = torch.Tensor([9, 9, 1.2, 1.2]).float()
+domain_lower_bd = torch.Tensor([-0.3, -0.3, -0.5, -0.5]).float()
+domain_upper_bd = torch.Tensor([4.3, 4.3, 0.5, 0.5]).float()
 
 control_lower_bd = torch.Tensor([-1, -1]).float()
 control_upper_bd = -control_lower_bd
@@ -201,20 +201,22 @@ control_upper_bd = -control_lower_bd
     
 def rou(s: torch.Tensor) -> torch.Tensor:
     
-    rou_1 = torch.unsqueeze(s[:, 0] - 0.1, dim=1)
-    rou_2 = torch.unsqueeze( - s[:, 0] + 7.9, dim=1)
-    rou_3 = torch.unsqueeze(s[:, 1] - 0.1, dim=1)
-    rou_4 = torch.unsqueeze( -s[:, 1] + 7.9, dim=1)
-    rou_5 = torch.unsqueeze( -s[:, 2] + 1, dim=1)
-    rou_6 = torch.unsqueeze(s[:, 2] + 1, dim=1)
-    rou_7 = torch.unsqueeze( -s[:, 3] + 1, dim=1)
-    rou_8 = torch.unsqueeze(s[:, 3] + 1, dim=1)
+    rou_1 = torch.unsqueeze(s[:, 0] - 0, dim=1)
+    rou_2 = torch.unsqueeze( - s[:, 0] + 4, dim=1)
+    rou_3 = torch.unsqueeze(s[:, 1] - 0, dim=1)
+    rou_4 = torch.unsqueeze( -s[:, 1] + 4, dim=1)
+    # rou_5 = torch.unsqueeze( -s[:, 2] + 1, dim=1)
+    # rou_6 = torch.unsqueeze(s[:, 2] + 1, dim=1)
+    # rou_7 = torch.unsqueeze( -s[:, 3] + 1, dim=1)
+    # rou_8 = torch.unsqueeze(s[:, 3] + 1, dim=1)
 
-    dist = torch.abs( s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2) )
-    rou_9 = torch.max(dist[:, 0], dist[:, 1]).reshape(-1, 1) - 1.1
-    # rou_9 = torch.norm(s[:, 0:2] - torch.tensor([5,5]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1.9
+    dist = torch.abs( s[:, 0:2] - torch.tensor([2, 1]).to(s.device).reshape(1, 2) )
+    rou_9 = torch.max(dist[:, 0]-0.5, dist[:, 1]-1).reshape(-1, 1) 
+    # rou_9 = torch.norm(s[:, 0:2] - torch.tensor([2,2]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1
 
-    return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_5, rou_6, rou_7, rou_8, rou_9) )
+    # rou_10 = torch.norm(s[:, 0:2] - torch.tensor([2,2]).to(s.device).reshape(1, 2), dim=1, keepdim=True) - 1.5
+
+    return torch.hstack( (rou_1, rou_2, rou_3, rou_4, rou_9) )
 
 def rou_n(s: torch.Tensor) -> torch.Tensor:
     s_norm = torch.norm(s, dim=1, keepdim=True)

@@ -27,7 +27,7 @@ class TrainingDataModule(pl.LightningDataModule):
         self.training_points_num = training_points_num
         self.train_mode = train_mode
         self.training_grid_gap = training_grid_gap
-        self.minimum_grid_gap = 0.001
+        self.minimum_grid_gap = 0.1
         self.verified = False
         self.augment_data = torch.zeros(1, self.system.ns)
         self.maximum_augment_data_num = int(5e5)
