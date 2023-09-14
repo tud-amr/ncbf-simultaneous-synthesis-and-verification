@@ -13,7 +13,7 @@ from matplotlib.ticker import LinearLocator
 
 from safe_rl_cbf.NeuralCBF.MyNeuralNetwork import *
 # from ValueFunctionNeuralNetwork import *
-from safe_rl_cbf.Dynamics.dynamic_system_instances import inverted_pendulum_1, dubins_car, dubins_car_rotate ,dubins_car_acc, point_robots_dis, robot_arm_2d, two_vehicle_avoidance
+from safe_rl_cbf.Dynamics.dynamic_system_instances import inverted_pendulum_1, dubins_car, dubins_car_rotate ,dubins_car_acc, point_robot ,point_robots_dis, robot_arm_2d, two_vehicle_avoidance
 from safe_rl_cbf.Dataset.TrainingDataModule import TrainingDataModule
 
 
@@ -23,11 +23,11 @@ def extract_number(f):
 
 ########################### hyperparameters #############################
 
-train_mode = 2
-system = inverted_pendulum_1
-default_root_dir = "./logs/CBF_logs/inverted_pendulum_2"
-checkpoint_dir = "logs/CBF_logs/inverted_pendulum_2/lightning_logs/version_1/checkpoints/epoch=93-step=7708.ckpt"
-grid_gap = torch.Tensor([0.2, 0.2])  
+train_mode = 1
+system = point_robot
+default_root_dir = "./logs/CBF_logs/point_robot_new"
+checkpoint_dir = "logs/CBF_logs/point_robot_new/lightning_logs/version_2/checkpoints/epoch=399-step=32800.ckpt"
+grid_gap = torch.Tensor([0.6, 0.6, 0.2, 0.2])  
 
 ########################## start training ###############################
 
@@ -41,7 +41,7 @@ if train_mode==0:
 
     NN = NeuralNetwork(dynamic_system=system, data_module=data_module, train_mode=train_mode)
     # NN0 =  NeuralNetwork.load_from_checkpoint("logs/CBF_logs/dubins_car_acc/lightning_logs/version_1/checkpoints/epoch=86-step=14181.ckpt",dynamic_system=system, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
-    # NN = NeuralNetwork.load_from_checkpoint("logs/CBF_logs/two_vehicle_avoidance/lightning_logs/version_1/checkpoints/epoch=869-step=141810.ckpt",dynamic_system=system, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
+    # NN = NeuralNetwork.load_from_checkpoint(checkpoint_dir, dynamic_system=system, data_module=data_module, train_mode=train_mode)
    
     # NN.training_stage = 0
     # NN.set_previous_cbf(NN.h)
@@ -63,17 +63,18 @@ if train_mode==0:
 
 elif train_mode==1:
         
-    data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=1024, training_points_num=int(1e6), train_mode=train_mode)
+    data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=1024, training_points_num=int(5e5), train_mode=train_mode)
 
     NN0 =  NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=train_mode)
     NN = NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=train_mode)
-   
+    # NN = NeuralNetwork(dynamic_system=system, data_module=data_module, train_mode=train_mode)
+
     NN.set_previous_cbf(NN0.h)
 
     trainer = pl.Trainer(
         accelerator = "gpu",
         devices = 1,
-        max_epochs=200,
+        max_epochs=400,
         # callbacks=[ EarlyStopping(monitor="Total_loss/train", mode="min", check_on_train_epoch_end=True, strict=False, patience=20, stopping_threshold=1e-3) ], 
         # callbacks=[StochasticWeightAveraging(swa_lrs=1e-2)],
         default_root_dir=default_root_dir,
@@ -87,7 +88,7 @@ elif train_mode==1:
     
 elif train_mode==2:
      
-    data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=64, training_points_num=int(1e6), train_mode=train_mode, training_grid_gap=grid_gap)
+    data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=1024, training_points_num=int(1e6), train_mode=train_mode, training_grid_gap=grid_gap)
 
     NN0 =  NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=train_mode)
     NN = NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=train_mode)
@@ -97,12 +98,12 @@ elif train_mode==2:
     trainer = pl.Trainer(
         accelerator = "gpu",
         devices = 1,
-        max_epochs=200,
+        max_epochs=800,
         # callbacks=[ EarlyStopping(monitor="Total_loss/train", mode="min", check_on_train_epoch_end=True, strict=False, patience=20, stopping_threshold=1e-3) ], 
         # callbacks=[StochasticWeightAveraging(swa_lrs=1e-2)],
         default_root_dir=default_root_dir,
-        reload_dataloaders_every_n_epochs=15,
-        accumulate_grad_batches=6,
+        reload_dataloaders_every_n_epochs=20,
+        accumulate_grad_batches=12,
         # gradient_clip_val=0.5
         )
 

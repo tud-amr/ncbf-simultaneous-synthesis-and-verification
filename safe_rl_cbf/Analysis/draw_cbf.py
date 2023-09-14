@@ -85,16 +85,16 @@ def draw_cbf(system):
     plt.figure()
 
     # Create contour lines or level curves using matpltlib.pyplt module
-    contours = plt.contourf(hVS_XData, hVS_YData, hVS_ZData, levels=[-0.1, 0, 1], colors=['w','y','w'], extend='both')
+    # contours = plt.contourf(hVS_XData, hVS_YData, hVS_ZData, levels=[-0.1, 0, 1], colors=['w','y','w'], extend='both')
 
-    contours2 = plt.contour(hVS0_XData, hVS0_YData, hVS0_ZData, levels=[0], colors='grey', linewidth=5)
+    # contours2 = plt.contour(hVS0_XData, hVS0_YData, hVS0_ZData, levels=[0], colors='grey', linewidth=5)
 
 
-    plt.scatter(x, y, s=10, c='b')
+    plt.scatter(x, y, s=1, c='b')
 
     X_in = inadmissible_boundary_state[:, x_index].detach().cpu().numpy()
     Y_in = inadmissible_boundary_state[:, y_index].detach().cpu().numpy()
-    # plt.scatter(X, Y, s=2, c='y')
+    plt.scatter(X_in, Y_in, s=1, c='y')
 
     plt.xlabel(r"$x$")
     plt.ylabel(r"$y$")
@@ -135,8 +135,8 @@ def draw_cbf(system):
 
     plt.figure()
 
-    plt.scatter(x, y, s=10, c='b')
-    plt.scatter(X_descent, Y_descent, s=10, c='r')
+    plt.scatter(x, y, s=1, c='b')
+    plt.scatter(X_descent, Y_descent, s=1, c='r')
     plt.scatter(X_in, Y_in, s=1, c='y')
 
 
