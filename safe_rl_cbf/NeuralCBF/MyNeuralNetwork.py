@@ -90,14 +90,24 @@ class NeuralNetwork(pl.LightningModule):
         #         nn.ReLU(),
         #         nn.Linear(256,1)
         #     )
-        
+
         self.h = nn.Sequential(
-                nn.Linear(self.dynamic_system.ns, 32),
+                nn.Linear(self.dynamic_system.ns, 256),
                 nn.Tanh(),
-                nn.Linear(32, 32),
+                nn.Linear(256, 256),
                 nn.Tanh(),
-                nn.Linear(32, 1)
+                nn.Linear(256, 256),
+                nn.Tanh(),
+                nn.Linear(256, 1)
             )
+
+        # self.h = nn.Sequential(
+        #         nn.Linear(self.dynamic_system.ns, 32),
+        #         nn.Tanh(),
+        #         nn.Linear(32, 32),
+        #         nn.Tanh(),
+        #         nn.Linear(32, 1)
+        #     )
         
 
         # self.h = Transformer(self.dynamic_system.ns, 160)
@@ -686,7 +696,7 @@ class NeuralNetwork(pl.LightningModule):
       
 
         u_qp, d_min = self.get_control_vertices(s)
-        u_qp = self.nominal_controller(s)
+        # u_qp = self.nominal_controller(s)
 
         lb_dx, ub_dx = self.dynamic_system.range_dxdt(data_l, data_u, u_qp)
         # lb_dx = dxdt_min
@@ -830,7 +840,7 @@ class NeuralNetwork(pl.LightningModule):
 
         u_qp, d_min = self.get_control_vertices(s)
 
-        u_qp = self.nominal_controller(s)
+        # u_qp = self.nominal_controller(s)
 
         if u_qp is not None:
             control_term = torch.bmm(

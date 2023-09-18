@@ -24,10 +24,10 @@ def extract_number(f):
 ########################### hyperparameters #############################
 
 train_mode = 2
-system = inverted_pendulum_1
-default_root_dir = "logs/CBF_logs/inverted_pendulum_32_3"
-checkpoint_dir = "logs/CBF_logs/inverted_pendulum_32_2/lightning_logs/version_0/checkpoints/epoch=293-step=2646.ckpt"
-grid_gap = torch.Tensor([0.2, 0.2])  
+system = point_robot
+default_root_dir = "logs/CBF_logs/point_robot_new_2"
+checkpoint_dir = "logs/CBF_logs/point_robot_new_2/lightning_logs/version_2/checkpoints/epoch=10-step=702.ckpt"
+grid_gap = torch.Tensor([0.4, 0.4, 0.2, 0.2])  
 
 ########################## start training ###############################
 
@@ -88,7 +88,7 @@ elif train_mode==1:
     
 elif train_mode==2:
      
-    data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=1024, training_points_num=int(1e5), train_mode=1, training_grid_gap=None)
+    data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=1024, training_points_num=int(2e5), train_mode=1, training_grid_gap=None)
 
     NN0 =  NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=train_mode)
     NN = NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=train_mode)
@@ -112,7 +112,12 @@ elif train_mode==2:
     
     del NN0, NN, trainer
     
+    verification_time = 0
+    training_start_time = time.time()
+
     while True:
+
+        verification_start_time = time.time()
         
         data_module.train_mode = 2
         data_module.training_grid_gap = grid_gap
@@ -150,6 +155,8 @@ elif train_mode==2:
         print(f"augment_data.shape = {data_module.augment_data.shape}")
         torch.save(data_module.augment_data, "s_training.pt")
        
+        verification_time += time.time() - verification_start_time
+        counter_examples_num = data_module.augment_data.shape[0]
 
         if data_module.verified == 1:
             break
@@ -188,11 +195,12 @@ elif train_mode==2:
         trainer.fit(NN)
 
 
-
-
-
-
-
+    training_end_time = time.time() 
+    total_training_time = training_end_time - training_start_time
+    print(f"total_training_time = {total_training_time}")
+    print(f"verification_time = {verification_time}")
+    print(f"counter_examples_num = {counter_examples_num}")
+    print(f"average generation time per counterexample = {verification_time/counter_examples_num}")
 
 
 
