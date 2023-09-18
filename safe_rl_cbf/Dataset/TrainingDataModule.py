@@ -8,6 +8,9 @@ from safe_rl_cbf.Dynamics.control_affine_system import ControlAffineSystem
 from itertools import product
 from treelib import Tree, Node
 import matplotlib.pyplot as plt
+from dreal import *
+import timeit 
+from safe_rl_cbf.NeuralLC.Functions import *
 
 class TrainingDataModule(pl.LightningDataModule):
     def __init__(
@@ -33,7 +36,9 @@ class TrainingDataModule(pl.LightningDataModule):
         self.augment_data = torch.zeros(1, self.system.ns)
         self.maximum_augment_data_num = int(5e4)
         # self.initalize_data()
-       
+        self.model = None
+        self.SMT_verification_time = 0
+        self.SMT_CE_num = 0
 
     def initalize_data(self):
         domain_lower_bd, domain_upper_bd = self.system.domain_limits
@@ -194,7 +199,7 @@ class TrainingDataModule(pl.LightningDataModule):
             self.safe_mask_validation =  self.system.safe_mask(self.s_validation) # self.s_validation.norm(dim=-1) <= 0.6
             self.unsafe_mask_validation = self.system.unsafe_mask(self.s_validation)
             
-        elif self.train_mode == 1:
+        elif (self.train_mode == 1 or self.train_mode == 3):
             
             domain_lower_bd, domain_upper_bd = self.system.domain_limits
             domain_bd_gap = domain_upper_bd - domain_lower_bd
@@ -396,6 +401,83 @@ class TrainingDataModule(pl.LightningDataModule):
 
             self.augment_data = torch.cat( (self.augment_data,s_samples), dim=0)
             # self.training_points_num = int( min(5e5, max(int(5 * self.augment_data.shape[0]), self.minimum_training_points_num)) )
+
+        if self.train_mode == 3:
+            G = 9.81 
+            l = 1
+            m = 1
+            b = 0.1
+
+            x1 = Variable("x1")
+            x2 = Variable("x2")
+            vars_ = [x1,x2]
+
+            para = self.model.parameters()
+            w1 = next(para).data.detach().cpu().numpy()
+            b1 = next(para).data.detach().cpu().numpy()
+            w2 = next(para).data.detach().cpu().numpy()
+            b2 = next(para).data.detach().cpu().numpy()
+            w3 = next(para).data.detach().cpu().numpy()
+            b3 = next(para).data.detach().cpu().numpy()
+
+            start = timeit.default_timer()
+            lqr = torch.tensor([[ -2.0,  -3.2699]])    # lqr solution
+            q = torch.nn.parameter.Parameter(lqr)
+            
+            config = Config()
+            config.use_polytope_in_forall = True
+            config.use_local_optimization = True
+            config.precision = 1e-2
+
+            u_NN = (-2.0*x1 - 3.2699*x2) 
+            print('u_NN',u_NN)
+            f = [ x2,
+                 (3*m*G*l*sin(x1) + 3*u_NN - 3*b*x2) /(m*l**2)]
+
+            # Candidate V
+            z1 = np.dot(vars_,w1.T)+b1
+
+            a1 = []
+            for j in range(0,len(z1)):
+                a1.append(tanh(z1[j]))
+            z2 = np.dot(a1,w2.T)+b2
+
+            a2 = []
+            for j in range(0,len(z2)):
+                a2.append(tanh(z2[j]))
+            z3 = np.dot(a2,w3.T)+b3
+
+            V_learn = tanh(z3.item(0))
+
+            print('===========Verifying==========')        
+            start_ = timeit.default_timer() 
+            result= CheckCBF(vars_, f, V_learn, config)
+            stop_ = timeit.default_timer() 
+
+            domain_lower_bd, domain_upper_bd = self.system.domain_limits
+            domain_bd_gap = domain_upper_bd - domain_lower_bd
+
+            s = torch.rand(self.training_points_num, self.system.ns) * domain_bd_gap + domain_lower_bd
+           
+            if (result): 
+                print("Not a Lyapunov function. Found counterexample: ")
+                print(result)
+                s_samples, ce = AddCounterexamplesCBF(s,result,100)
+            else:  
+                valid = True
+                print("Satisfy conditions!!")
+                print(V_learn, " is a Lyapunov function.")
+            self.SMT_verification_time += (stop_ - start_)
+            self.SMT_CE_num += ce.shape[0]
+            self.augment_data = torch.cat((self.augment_data,ce), dim=0)
+            if self.augment_data.shape[0] > self.maximum_augment_data_num:
+                self.augment_data = self.augment_data[-self.maximum_augment_data_num:]
+            print('==============================') 
+
+            assert self.training_grid_gap is None
+            sample_data_grid_gap = torch.zeros(s_samples.shape[0], self.system.ns)
+            torch.save(self.augment_data, "SMT_augment_data.pt")
+            
 
         # split into training and validation
         random_indices = torch.randperm(s_samples.shape[0])

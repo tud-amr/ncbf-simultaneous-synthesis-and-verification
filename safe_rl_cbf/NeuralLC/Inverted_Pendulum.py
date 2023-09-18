@@ -44,9 +44,9 @@ def f_value(x,u):
 '''
 For learning 
 '''
-N = 500             # sample size
+N =int(1e4)             # sample size
 D_in = 2            # input dimension
-H1 = 12              # hidden dimension
+H1 = 32              # hidden dimension
 D_out = 1           # output dimension
 torch.manual_seed(10)  
 x = torch.Tensor(N, D_in).uniform_(-6, 6).float()           

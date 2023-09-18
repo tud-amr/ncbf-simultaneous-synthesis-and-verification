@@ -23,9 +23,9 @@ def extract_number(f):
 
 ########################### hyperparameters #############################
 
-train_mode = 2
+train_mode = 3
 system = inverted_pendulum_1
-default_root_dir = "logs/CBF_logs/inverted_pendulum_32_3"
+default_root_dir = "logs/CBF_logs/inverted_pendulum_32_SMT"
 checkpoint_dir = "logs/CBF_logs/inverted_pendulum_32_2/lightning_logs/version_0/checkpoints/epoch=293-step=2646.ckpt"
 grid_gap = torch.Tensor([0.2, 0.2])  
 
@@ -187,8 +187,35 @@ elif train_mode==2:
         torch.autograd.set_detect_anomaly(True)
         trainer.fit(NN)
 
+elif train_mode==3:
 
+    data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=1024, training_points_num=int(1e4), train_mode=3, training_grid_gap=None)
 
+    NN0 =  NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=train_mode)
+    NN = NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=train_mode)
+   
+    NN.set_previous_cbf(NN0.h)
+    data_module.model = NN
+
+    trainer = pl.Trainer(
+        accelerator = "gpu",
+        devices = 1,
+        max_epochs=31,
+        # callbacks=[ EarlyStopping(monitor="Total_loss/train", mode="min", check_on_train_epoch_end=True, strict=False, patience=20, stopping_threshold=1e-3) ], 
+        # callbacks=[StochasticWeightAveraging(swa_lrs=1e-2)],
+        default_root_dir=default_root_dir,
+        reload_dataloaders_every_n_epochs=10,
+        accumulate_grad_batches=12,
+        # gradient_clip_val=0.5
+        )
+
+    torch.autograd.set_detect_anomaly(True)
+    trainer.fit(NN)
+
+    print(f"data_module.verified = {data_module.verified}")
+    print(f"augment_data.shape = {data_module.augment_data.shape}")
+    print(f"verification time = {data_module.SMT_verification_time}")
+    print(f"average generation time each counterexample = {data_module.SMT_verification_time/data_module.SMT_CE_num}")
 
 
 

@@ -55,3 +55,37 @@ def Tune(x):
         y.append(f)
     y = torch.tensor(y)
     return y
+
+def CheckCBF(x, f, V, config):    
+    # Given a dynamical system dx/dt = f(x,u) and candidate Lyapunov function V
+    # Check the Lyapunov conditions within a domain around the origin (ball_lb ≤ sqrt(∑xᵢ²) ≤ ball_ub). 
+    # If it return unsat, then there is no state violating the conditions. 
+    
+    lie_derivative_of_V = Expression(0)
+    
+    for i in range(len(x)):
+        lie_derivative_of_V += f[i]*V.Differentiate(x[i])  
+    cbc = lie_derivative_of_V + 0.5*V
+    ball_in_bound = logical_and( - 5* np.pi / 6 <= x[0], 5* np.pi / 6 >= x[0],  -4 <= x[1], 4 >= x[1])
+    
+    # Constraint: x ∈ Ball → (V(c, x) > 0 ∧ Lie derivative of V <= 0)     
+    condition = logical_imply(ball_in_bound, cbc >= 0)
+    return CheckSatisfiability(logical_not(condition),config)
+
+
+def AddCounterexamplesCBF(x,CE,N): 
+    # Adding CE back to sample set
+    c = []
+    nearby= []
+    for i in range(CE.size()):
+        c.append(CE[i].mid())
+        lb = CE[i].lb()
+        ub = CE[i].ub()
+        nearby_ = np.random.uniform(lb,ub,N)
+        nearby.append(nearby_)
+    for i in range(N):
+        n_pt = []
+        for j in range(x.shape[1]):
+            n_pt.append(nearby[j][i])             
+        x = torch.cat((x, torch.tensor([n_pt])), 0).float()
+    return x, torch.tensor([n_pt])

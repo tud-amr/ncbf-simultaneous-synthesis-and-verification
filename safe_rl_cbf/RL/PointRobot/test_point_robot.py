@@ -20,7 +20,7 @@ data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=51
 NN = NeuralNetwork.load_from_checkpoint("saved_models/point_robot_2/checkpoints/epoch=85-step=5402.ckpt", dynamic_system=system, data_module=data_module )
 NN.to(device)
 
-env.set_barrier_function(NN)
+# env.set_barrier_function(NN)
 
 obs = env.reset()
 

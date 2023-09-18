@@ -71,7 +71,7 @@ class NeuralNetwork(pl.LightningModule):
         self.train_mode = train_mode
         if train_mode == 0:
             self.learning_rate = primal_learning_rate
-        elif train_mode == 1:
+        elif (train_mode == 1 or train_mode == 3):
             self.learning_rate = 5e-4
         elif train_mode == 2:
             self.learning_rate = 5e-5
@@ -1892,7 +1892,15 @@ class NeuralNetwork(pl.LightningModule):
                 # del copy_h_bound
                 # del copy_h_j
 
-        
+        if self.train_mode == 3:
+            
+            component_losses.update(
+                self.hji_vi_loss(s_random, safe_mask, unsafe_mask, 
+                                hs, gradh, 
+                                coefficients_hji_boundary_loss=self.coefficient_for_performance_loss,
+                                coefficients_hji_descent_loss=self.coefficients_for_descent_loss,
+                                coefficients_hji_inadmissible_loss=self.coefficient_for_inadmissible_state_loss)
+            )
 
         # Compute the overall loss by summing up the individual losses
         total_loss = torch.tensor(0.0).type_as(s)
@@ -2028,7 +2036,7 @@ class NeuralNetwork(pl.LightningModule):
             torch.save(self.data_module.s_training, "s_training.pt")
             
 
-        if self.train_mode == 2 and (self.current_epoch + 1) % (self.trainer.reload_dataloaders_every_n_epochs ) == 0:
+        if (self.train_mode == 2 or self.train_mode == 3 ) and (self.current_epoch + 1) % (self.trainer.reload_dataloaders_every_n_epochs ) == 0:
             self.data_module.augment_dataset()
             # torch.save(self.data_module.s_training, "s_training.pt")
             if self.data_module.verified == 1:

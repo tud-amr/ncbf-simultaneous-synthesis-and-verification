@@ -24,9 +24,9 @@ class PointRobotEnv(gym.Env):
        
         
         # state property
-        self.x_max = 8.0
-        self.y_max = 8.0    
-        self.v_max = 1.0
+        self.x_max = 4.0
+        self.y_max = 4.0    
+        self.v_max = 0.4
        
         
         min_observation = np.array([0, 0, -1, -1], dtype=np.float32)
@@ -49,7 +49,7 @@ class PointRobotEnv(gym.Env):
         # simulation property
         self.current_time_step = 0
         self.max_time_steps = 1000
-        self.scale = 50.0
+        self.scale = 100.0
         self.dt = 1/50
         self.render_sim = render_sim
 
@@ -58,8 +58,8 @@ class PointRobotEnv(gym.Env):
         self.x_target_min = self.x_max * 0.4
         self.y_target_max = self.y_max * 0.7
         self.y_target_min = self.y_max * 0.4
-        self.x_target = 5 # random.uniform(self.x_target_min, self.x_target_max)
-        self.y_target = 2 # random.uniform(self.y_target_min, self.y_target_max)
+        self.x_target = 3 # random.uniform(self.x_target_min, self.x_target_max)
+        self.y_target = 3 # random.uniform(self.y_target_min, self.y_target_max)
         self.target = np.array([self.x_target, self.y_target])
         self.target_radius = 0.2
 
@@ -101,10 +101,10 @@ class PointRobotEnv(gym.Env):
 
     def init_obstacles(self):
         body = pymunk.Body(body_type=pymunk.Body.STATIC)
-        x = 5
-        y = 5
+        x = 2
+        y = 1
         body.position = (x * self.scale, y * self.scale)
-        width = 2
+        width = 1
         height = 2
         shape = pymunk.Poly.create_box(body, size=( width * self.scale, height * self.scale ))
         self.space.add(body, shape)
@@ -131,7 +131,7 @@ class PointRobotEnv(gym.Env):
             
             
             u_ref = torch.from_numpy(action).float().reshape((-1,self.h.dynamic_system.nu)).to(device)            
-            u_result, r_result = self.h.solve_CLF_QP(s, gradh, u_ref, epsilon=0.25)
+            u_result, r_result = self.h.solve_CLF_QP(s, gradh, u_ref, epsilon=0.1)
 
            
             u = u_result.cpu().numpy().flatten()
@@ -206,7 +206,7 @@ class PointRobotEnv(gym.Env):
             
            
 
-        elif np.abs(x - 5) < 1 + self.radius and np.abs(y - 5) < 1 + self.radius:
+        elif np.abs(x - 2) < 0.5 - self.radius/2 and np.abs(y - 1) < 1 - self.radius/2:
             print("collision with obstacle!!!!!!!!!!!!")
             reward = -1000
             self.break_safety += 1
@@ -260,8 +260,8 @@ class PointRobotEnv(gym.Env):
 
     def reset(self):
         
-        self.x_init = 2.5 # random.uniform(2, 3)
-        self.y_init = 5.5 # random.uniform(5, 6)
+        self.x_init = 1 # random.uniform(2, 3)
+        self.y_init = 1 # random.uniform(5, 6)
         self.point_robot.set_states(self.x_init, self.y_init)
         return self.get_observation()
 
