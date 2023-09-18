@@ -23,11 +23,11 @@ def extract_number(f):
 
 ########################### hyperparameters #############################
 
-train_mode = 1
-system = point_robot
-default_root_dir = "./logs/CBF_logs/point_robot_new"
-checkpoint_dir = "logs/CBF_logs/point_robot_new/lightning_logs/version_2/checkpoints/epoch=399-step=32800.ckpt"
-grid_gap = torch.Tensor([0.6, 0.6, 0.2, 0.2])  
+train_mode = 2
+system = inverted_pendulum_1
+default_root_dir = "logs/CBF_logs/inverted_pendulum_32_3"
+checkpoint_dir = "logs/CBF_logs/inverted_pendulum_32_2/lightning_logs/version_0/checkpoints/epoch=293-step=2646.ckpt"
+grid_gap = torch.Tensor([0.2, 0.2])  
 
 ########################## start training ###############################
 
@@ -37,7 +37,7 @@ print('Using {} device'.format(device))
 # checkpoint_callback = ModelCheckpoint(dirpath=default_root_dir, save_top_k=1, monitor="Total_loss/train")
 if train_mode==0:
 
-    data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=1024, training_points_num=int(1e6), train_mode=train_mode)
+    data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=1024, training_points_num=int(1e5), train_mode=train_mode)
 
     NN = NeuralNetwork(dynamic_system=system, data_module=data_module, train_mode=train_mode)
     # NN0 =  NeuralNetwork.load_from_checkpoint("logs/CBF_logs/dubins_car_acc/lightning_logs/version_1/checkpoints/epoch=86-step=14181.ckpt",dynamic_system=system, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
@@ -74,7 +74,7 @@ elif train_mode==1:
     trainer = pl.Trainer(
         accelerator = "gpu",
         devices = 1,
-        max_epochs=400,
+        max_epochs=800,
         # callbacks=[ EarlyStopping(monitor="Total_loss/train", mode="min", check_on_train_epoch_end=True, strict=False, patience=20, stopping_threshold=1e-3) ], 
         # callbacks=[StochasticWeightAveraging(swa_lrs=1e-2)],
         default_root_dir=default_root_dir,
@@ -88,7 +88,7 @@ elif train_mode==1:
     
 elif train_mode==2:
      
-    data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=1024, training_points_num=int(1e6), train_mode=train_mode, training_grid_gap=grid_gap)
+    data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=1024, training_points_num=int(1e5), train_mode=1, training_grid_gap=None)
 
     NN0 =  NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=train_mode)
     NN = NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=train_mode)
@@ -98,23 +98,94 @@ elif train_mode==2:
     trainer = pl.Trainer(
         accelerator = "gpu",
         devices = 1,
-        max_epochs=800,
+        max_epochs=10,
         # callbacks=[ EarlyStopping(monitor="Total_loss/train", mode="min", check_on_train_epoch_end=True, strict=False, patience=20, stopping_threshold=1e-3) ], 
         # callbacks=[StochasticWeightAveraging(swa_lrs=1e-2)],
         default_root_dir=default_root_dir,
-        reload_dataloaders_every_n_epochs=20,
+        reload_dataloaders_every_n_epochs=1000,
         accumulate_grad_batches=12,
         # gradient_clip_val=0.5
         )
 
     torch.autograd.set_detect_anomaly(True)
-    trainer.fit(NN)
+    # trainer.fit(NN)
     
+    del NN0, NN, trainer
     
+    while True:
+        
+        data_module.train_mode = 2
+        data_module.training_grid_gap = grid_gap
+        data_module.prepare_data()
 
+        log_dir = default_root_dir + "/lightning_logs"
+        version_list = os.listdir(log_dir)
+        version_dir =  log_dir + "/" +  max(version_list,key=extract_number)
+        checkpoint_folder_dir = version_dir + "/checkpoints"
+        checkpoint_name = os.listdir(checkpoint_folder_dir)[0]
+        latest_checkpoint = checkpoint_folder_dir + "/" + checkpoint_name 
+        print("latest_checkpoint: ", latest_checkpoint)
 
+        NN0 =  NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=train_mode)
+        NN = NeuralNetwork.load_from_checkpoint(latest_checkpoint,dynamic_system=system, data_module=data_module, train_mode=train_mode)
+    
+        NN.set_previous_cbf(NN0.h)
 
+        trainer = pl.Trainer(
+            accelerator = "gpu",
+            devices = 1,
+            max_epochs=1000,
+            # callbacks=[ EarlyStopping(monitor="Total_loss/train", mode="min", check_on_train_epoch_end=True, strict=False, patience=20, stopping_threshold=1e-3) ], 
+            # callbacks=[StochasticWeightAveraging(swa_lrs=1e-2)],
+            default_root_dir=default_root_dir,
+            reload_dataloaders_every_n_epochs=1,
+            accumulate_grad_batches=12,
+            # gradient_clip_val=0.5
+            )
 
+        torch.autograd.set_detect_anomaly(True)
+        trainer.fit(NN)
+
+        print(f"data_module.verified = {data_module.verified}")
+        print(f"augment_data.shape = {data_module.augment_data.shape}")
+        torch.save(data_module.augment_data, "s_training.pt")
+       
+
+        if data_module.verified == 1:
+            break
+        
+        del NN0, NN, trainer
+
+        data_module.train_mode = 1
+        data_module.training_grid_gap = None
+        data_module.augment_dataset()
+
+        log_dir = default_root_dir + "/lightning_logs"
+        version_list = os.listdir(log_dir)
+        version_dir =  log_dir + "/" +  max(version_list,key=extract_number)
+        checkpoint_folder_dir = version_dir + "/checkpoints"
+        checkpoint_name = os.listdir(checkpoint_folder_dir)[0]
+        latest_checkpoint = checkpoint_folder_dir + "/" + checkpoint_name 
+
+        NN0 =  NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=1)
+        NN = NeuralNetwork.load_from_checkpoint(latest_checkpoint,dynamic_system=system, data_module=data_module, train_mode=1)
+    
+        NN.set_previous_cbf(NN0.h)
+
+        trainer = pl.Trainer(
+            accelerator = "gpu",
+            devices = 1,
+            max_epochs=20,
+            # callbacks=[ EarlyStopping(monitor="Total_loss/train", mode="min", check_on_train_epoch_end=True, strict=False, patience=20, stopping_threshold=1e-3) ], 
+            # callbacks=[StochasticWeightAveraging(swa_lrs=1e-2)],
+            default_root_dir=default_root_dir,
+            reload_dataloaders_every_n_epochs=1000,
+            accumulate_grad_batches=12,
+            # gradient_clip_val=0.5
+            )
+
+        torch.autograd.set_detect_anomaly(True)
+        trainer.fit(NN)
 
 
 
