@@ -71,18 +71,23 @@ class MyPendulumEnv(gym.Env):
         "render_fps": 30,
     }
     _np_random: Optional[np.random.Generator] = None
-    def __init__(self, render_mode: Optional[str] = None, g=10.0, with_CBF=False):
+    def __init__(self, render_mode: Optional[str] = None, g=9.81, with_CBF=False):
         super().__init__()
         
         self.with_CBF = with_CBF
         self.break_safety = 0
         self.prefix = "with_CBF_" if self.with_CBF else "without_CBF_"
-        self.max_speed = 8
+        self.max_speed = 4
         self.max_torque = 12.0
         self.dt = 0.05
         self.g = g
-        self.m = 0.8
+        self.m = 1.0
         self.l = 1.0
+        self.b = 0.1
+
+        self.current_time_step = 0
+        self.max_time_steps = 1500
+
 
         self.render_mode = render_mode
 
@@ -91,30 +96,37 @@ class MyPendulumEnv(gym.Env):
         self.clock = None
         self.isopen = True
 
-        high = np.array([1.0, 1.0, self.max_speed], dtype=np.float32)
+        high = np.array([1.0, 1.0, 1.0], dtype=np.float32)
         # This will throw a warning in tests/envs/test_envs in utils/env_checker.py as the space is not symmetric
         #   or normalised as max_torque == 2 by default. Ignoring the issue here as the default settings are too old
         #   to update to follow the openai gym api
         self.action_space = spaces.Box(
-            low=-self.max_torque, high=self.max_torque, shape=(1,), dtype=np.float32
+            low=-1, high=1, shape=(1,), dtype=np.float32
         )
         self.observation_space = spaces.Box(low=-high, high=high, dtype=np.float32)
         self.epoch_trajectory = []
+        self.epoch_reward = []
         self.training_trajectories = []
+        self.training_rewards = []
         self.h = None
 
     def set_barrier_function(self, h):
         self.h = h
 
-    def step(self, u):
+    def step(self, action):
         start_time = time.time()
         th, thdot = self.state  # th := theta
-
+        action = action * self.max_torque
+       
+        
         g = self.g
         m = self.m
         l = self.l
+        b = self.b
         dt = self.dt
         costs = 0.0
+
+
         if self.with_CBF:
             if self.h is None:
                 raise Exception(f"Please use self.set_barrier_function to set barrier function")
@@ -123,37 +135,68 @@ class MyPendulumEnv(gym.Env):
             s = torch.from_numpy(self.state).float().reshape((-1,2)).to(device)
             
             hs = self.h(s)
-            gradh = self.h.jacobian(hs, s)
-            # if hs < 0:
-            #     raise Exception(f"Current state [{self.state[0]}, {self.state[1]}] is unsafe, h(s)={hs}")
-            
-            u_ref = torch.from_numpy(u).float().reshape((-1,1)).to(device)            
-            u_result, r_result = self.h.solve_CLF_QP(s, gradh, u_ref, epsilon=0.05)
+            if hs < 1:
+                gradh = self.h.jacobian(hs, s)
 
-            if r_result > 0.0:
-                self.break_safety += 1
-            #     raise Exception(f"The QP is infeasible, slack variable is {r_result}")
+                u_ref = torch.from_numpy(action).float().reshape((-1,self.h.dynamic_system.nu)).to(device)            
+                u_result, r_result = self.h.solve_CLF_QP(s, gradh, u_ref, epsilon=0.5)
 
-            if abs(u_result - u_ref) > 0.1:
-                costs += 15
+                # print(f"u_ref={u_ref}, u_result={u_result}, s={s}, hs={hs}")
 
-            u = u_result.cpu().numpy().squeeze(-1)
+                u = u_result.cpu().numpy().flatten()
+
+                if hs < 0:
+                    # print(f"Current state [{self.state}] is unsafe, h(s)={hs}, u={u}")
+                    # raise Exception(f"Current state [{self.state[0]}, {self.state[1]}] is unsafe, h(s)={hs}")
+                    pass
+
+                if r_result > 0.0:
+                    self.break_safety += 1
+                #     raise Exception(f"The QP is infeasible, slack variable is {r_result}")
+
+                if torch.abs( torch.norm(u_result - u_ref) ) > 0.1:
+                    # pass
+                    # print(f"u_ref={u_ref}, u_result={u_result}, hs={hs}")
+                    costs += 0.02
+                    # done = True
+            else:
+                u = action
+        else:
+            u = action
 
         u = np.clip(u, -self.max_torque, self.max_torque)[0]
         self.last_u = u  # for rendering
         costs += angle_normalize(th) ** 2 + 0.1 * thdot**2 + 0.001 * ((u/6)**2)
 
-        newthdot = thdot + (3 * g / (2 * l) * np.sin(th) + 1 / (m * l**2 / 3) * u) * dt
+        newthdot = thdot + (3 * g / (2 * l) * np.sin(th) - 3 * b / (m * l ** 2) * thdot  + 3 / (m * l**2 ) * u) * dt
         newthdot = np.clip(newthdot, -self.max_speed, self.max_speed)
         newth = th + newthdot * dt
 
-        self.state = np.array([newth, newthdot])
+        normalized_theta = angle_normalize(newth)
+        self.state = np.array([normalized_theta, newthdot])
+        self.current_time_step += 1
+
+        
+        self.epoch_trajectory.append( np.array([[normalized_theta], [self.state[1]]]) )
         
         is_unsafe = self.h.dynamic_system.unsafe_mask(torch.from_numpy(self.state).float().reshape((-1, 2)).to(self.h.device))
+        
         if is_unsafe[0]:
+            print("collision with obstacle!!!!!!!!!!!!")
             self.done = True
             costs += 15
             self.break_safety += 1
+            self.current_time_step = 0
+            self.training_trajectories.append( {"traj": np.hstack(self.epoch_trajectory), "collision": True})
+            self.epoch_trajectory.clear()
+        
+        elif self.current_time_step > self.max_time_steps:
+            print("reach max time steps!!!!!!!!!!!!")
+            self.done = False
+            self.current_time_step = 0
+            self.training_trajectories.append( {"traj": np.hstack(self.epoch_trajectory), "collision": False})
+            self.epoch_trajectory.clear()
+            
         else:
             self.done = False
 
@@ -161,8 +204,6 @@ class MyPendulumEnv(gym.Env):
             self.render()
 
         self.reward = -costs
-        normalized_theta = angle_normalize(self.state[0])
-        self.epoch_trajectory.append( np.array([[normalized_theta], [self.state[1]]]) )
 
         end_time = time.time()
         self.step_executing_time = end_time - start_time
@@ -188,9 +229,11 @@ class MyPendulumEnv(gym.Env):
         # find safe state
         self.state =  self.np_random.uniform(low=low, high=high)
         if self.with_CBF:
-            while self.h( torch.from_numpy(self.state).float().reshape((-1, 2)).to(self.h.device)) <= 0.01:
+            while self.h( torch.from_numpy(self.state).float().reshape((-1, 2)).to(self.h.device)) <= 0.8:
                 self.state =  self.np_random.uniform(low=low, high=high)
         
+        print(f"reset state: {self.state} !!!!!!!!!!!!")
+
         self.last_u = None
 
         if self.render_mode == "human":
@@ -199,7 +242,7 @@ class MyPendulumEnv(gym.Env):
 
     def _get_obs(self):
         theta, thetadot = self.state
-        return np.array([np.cos(theta), np.sin(theta), thetadot], dtype=np.float32)
+        return np.array([np.cos(theta), np.sin(theta), thetadot/self.max_speed], dtype=np.float32)
 
     def render(self):
         if self.render_mode is None:

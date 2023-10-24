@@ -72,15 +72,15 @@ class NeuralCLBF(pl.LightningModule):
         self.beta = 0.99
        
         self.require_grad_descent_loss = require_grad_descent_loss
-        self.h = nn.Sequential(
-                nn.Linear(self.dynamic_system.ns, 256),
-                nn.ReLU(),
-                nn.Linear(256, 256),
-                nn.ReLU(),
-                nn.Linear(256, 256),
-                nn.ReLU(),
-                nn.Linear(256,1)
-            )
+        # self.h = nn.Sequential(
+        #         nn.Linear(self.dynamic_system.ns, 256),
+        #         nn.ReLU(),
+        #         nn.Linear(256, 256),
+        #         nn.ReLU(),
+        #         nn.Linear(256, 256),
+        #         nn.ReLU(),
+        #         nn.Linear(256,1)
+        #     )
 
         # self.h = nn.Sequential(
         #         nn.Linear(self.dynamic_system.ns, 256),
@@ -91,6 +91,14 @@ class NeuralCLBF(pl.LightningModule):
         #         nn.Tanh(),
         #         nn.Linear(256,1)
         #     )
+
+        self.h = nn.Sequential(
+                nn.Linear(self.dynamic_system.ns, 32),
+                nn.Tanh(),
+                nn.Linear(32, 32),
+                nn.Tanh(),
+                nn.Linear(32, 1)
+            )
         
         self.param_init(self.h)
     
@@ -448,17 +456,17 @@ class NeuralCLBF(pl.LightningModule):
         
         condition_active = torch.sigmoid(10 * (1.0 + eps - hs))
 
-        u_qp, qp_relaxation = self.solve_CLF_QP(s, gradh, requires_grad=requires_grad, epsilon=0)
+        # u_qp, qp_relaxation = self.solve_CLF_QP(s, gradh, requires_grad=requires_grad, epsilon=0)
         # u_qp = self.solve_CLF_QP(s, requires_grad=requires_grad, epsilon=0)
-        
-        qp_relaxation = torch.mean(qp_relaxation, dim=-1)
+        u_qp = self.nominal_controller(s)
+        # qp_relaxation = torch.mean(qp_relaxation, dim=-1)
 
         # ####### Minimize the qp relaxation to encourage satisfying the decrease condition #################
-        qp_relaxation_loss = qp_relaxation[torch.logical_not(unsafe_mask)].mean()
-        loss.append(("QP_relaxation", qp_relaxation_loss))
+        # qp_relaxation_loss = qp_relaxation[torch.logical_not(unsafe_mask)].mean()
+        # loss.append(("QP_relaxation", qp_relaxation_loss))
 
         ############### Now compute the decrease using linearization #######################
-        eps = 1
+        eps = 0.1
         clbf_descent_term_lin = torch.tensor(0.0).type_as(s)
         clbf_descent_acc_lin = torch.tensor(0.0).type_as(s)
         # Get the current value of the CLBF and its Lie derivatives
@@ -483,7 +491,7 @@ class NeuralCLBF(pl.LightningModule):
 
 
         ##################### Now compute the decrease using simulation ##########################
-        eps = 0
+        eps = 0.1
         clbf_descent_term_sim = torch.tensor(0.0).type_as(s)
         clbf_descent_acc_sim = torch.tensor(0.0).type_as(s)
        
@@ -1209,8 +1217,10 @@ class NeuralCLBF(pl.LightningModule):
         gradh = self.jacobian(hs, s)
 
         Lf_h, Lg_h, Ld_V = self.V_lie_derivatives(s, gradh)
-
-        return Lf_h + Lg_h * u_vi
+        u = u_vi.expand(Lg_h.shape[0], -1)
+        Lg_h_u = Lg_h * u
+        dt = Lf_h + Lg_h_u.sum(dim=1, keepdim=True)
+        return dt
 
     def gradient_descent_condition(self, s, u_vi, alpha=0.5):
         output = self.h(s)
@@ -1511,6 +1521,10 @@ class NeuralCLBF(pl.LightningModule):
             self.training_stage = 1  # start to consider condition 3
             self.epoch_record = self.current_epoch
         
+        if self.training_stage == 1 and (self.current_epoch + 1) % (self.trainer.reload_dataloaders_every_n_epochs ) == 0:
+            self.data_module.augment_dataset()
+            torch.save(self.data_module.s_training, "s_training.pt")
+        
         print(f"current training stage is {self.training_stage}")
         print(f"current learning rate is {self.trainer.optimizers[0].param_groups[0]['lr']}")
 
@@ -1557,7 +1571,7 @@ class NeuralCLBF(pl.LightningModule):
 
         descent_violation, u_star_index = torch.max(c_list, dim=1)
 
-        descent_violation_mask = torch.logical_and(descent_violation < 0, torch.logical_not(h_x_neg_mask.squeeze(dim=-1)))  
+        descent_violation_mask = torch.logical_and(descent_violation < 0,  torch.logical_not(unsafe_mask.squeeze(dim=-1)))  
 
         s_descent_violation = x[descent_violation_mask]
         u_star_index_descent_violation = u_star_index[descent_violation_mask]

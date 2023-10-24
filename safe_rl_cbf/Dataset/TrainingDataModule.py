@@ -34,7 +34,7 @@ class TrainingDataModule(pl.LightningDataModule):
         self.minimum_grid_gap = 0.05
         self.verified = -1
         self.augment_data = torch.zeros(1, self.system.ns)
-        self.maximum_augment_data_num = int(5e4)
+        self.maximum_augment_data_num = int(5e6)
         # self.initalize_data()
         self.model = None
         self.SMT_verification_time = 0
@@ -345,6 +345,17 @@ class TrainingDataModule(pl.LightningDataModule):
         
         print("Augmenting dataset...")
         self.verified = -1
+        if self.train_mode == 0:
+            domain_lower_bd, domain_upper_bd = self.system.domain_limits
+            domain_bd_gap = domain_upper_bd - domain_lower_bd
+
+            s = torch.rand(self.training_points_num, self.system.ns) * domain_bd_gap + domain_lower_bd
+           
+            # generate training data
+            s_samples = s
+            
+            assert self.training_grid_gap is None
+            sample_data_grid_gap = torch.zeros(s_samples.shape[0], self.system.ns)
 
         if self.train_mode == 1:
             domain_lower_bd, domain_upper_bd = self.system.domain_limits

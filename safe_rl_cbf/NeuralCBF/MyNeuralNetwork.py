@@ -91,23 +91,23 @@ class NeuralNetwork(pl.LightningModule):
         #         nn.Linear(256,1)
         #     )
 
-        self.h = nn.Sequential(
-                nn.Linear(self.dynamic_system.ns, 256),
-                nn.Tanh(),
-                nn.Linear(256, 256),
-                nn.Tanh(),
-                nn.Linear(256, 256),
-                nn.Tanh(),
-                nn.Linear(256, 1)
-            )
-
         # self.h = nn.Sequential(
-        #         nn.Linear(self.dynamic_system.ns, 32),
+        #         nn.Linear(self.dynamic_system.ns, 256),
         #         nn.Tanh(),
-        #         nn.Linear(32, 32),
+        #         nn.Linear(256, 256),
         #         nn.Tanh(),
-        #         nn.Linear(32, 1)
+        #         nn.Linear(256, 256),
+        #         nn.Tanh(),
+        #         nn.Linear(256, 1)
         #     )
+
+        self.h = nn.Sequential(
+                nn.Linear(self.dynamic_system.ns, 32),
+                nn.Tanh(),
+                nn.Linear(32, 32),
+                nn.Tanh(),
+                nn.Linear(32, 1)
+            )
         
 
         # self.h = Transformer(self.dynamic_system.ns, 160)
@@ -512,10 +512,7 @@ class NeuralNetwork(pl.LightningModule):
 
         zero_mask = torch.logical_and(hs > -0.05, hs < 0.05)
 
-        if self.fine_tune:
-            condition_active = torch.sigmoid(5 * ( 1 - hs))
-        else:
-            condition_active = torch.sigmoid(5 * ( 1 - hs))
+
 
         # u_qp, qp_relaxation = self.solve_CLF_QP(s, gradh,requires_grad=requires_grad, epsilon=0)
         # u_qp = self.solve_CLF_QP(s, requires_grad=requires_grad, epsilon=0)
@@ -1395,7 +1392,7 @@ class NeuralNetwork(pl.LightningModule):
                     Lg_V_np = Lg_V[batch_idx, :].detach().cpu().numpy()
                     Lf_V_np = Lf_V[batch_idx, 0].detach().cpu().numpy()
                     V_np = V[batch_idx, 0].detach().cpu().numpy()
-                    clf_constraint = -(Lf_V_np + Lg_V_np @ u + 1 * V_np - epsilon)
+                    clf_constraint = -(Lf_V_np + Lg_V_np @ u + self.clf_lambda * V_np - epsilon)
                     if allow_relaxation:
                         clf_constraint -= r[0]
                     model.addConstr(clf_constraint <= 0.0, name=f"Scenario {0} Decrease")
@@ -2029,7 +2026,7 @@ class NeuralNetwork(pl.LightningModule):
             self.log(loss_key + "/train", avg_losses[loss_key], sync_dist=True)
 
            
-        if self.train_mode == 0 and (performance_losses < 5 and safety_losses < 5): # warm up
+        if self.train_mode == 0 and (performance_losses < 1 and safety_losses < 1): # warm up
             self.trainer.should_stop = True
             # pass
         
@@ -2073,7 +2070,7 @@ class NeuralNetwork(pl.LightningModule):
         x, safe_mask, unsafe_mask = batch
         
         # Get the various losses
-        batch_dict = {"shape_h": {}, "unsafe_violation": {}, "descent_violation": {}, "inadmissible_boundary":{} }
+        batch_dict = {"shape_h": {}, "unsafe_violation": {}, "descent_violation": {}, "inadmissible_boundary":{}, "inadmissible_area": {}, "admissible_area": {} }
         x.requires_grad_(True)
         
         # record shape_h
@@ -2119,10 +2116,22 @@ class NeuralNetwork(pl.LightningModule):
         # get safety boundary
         baseline = torch.min(self.dynamic_system.state_constraints(x), dim=1, keepdim=True).values
         
-        inadmissible_boundary_index = torch.logical_and(baseline < 0, baseline > -0.01).squeeze(dim=-1)
+        inadmissible_boundary_index = torch.logical_and(baseline < 0, baseline > -0.05).squeeze(dim=-1)
         inadmissible_boundary_state = x[inadmissible_boundary_index]
 
         batch_dict["inadmissible_boundary"]["state"] = inadmissible_boundary_state
+
+        inadmissible_area_index = unsafe_mask
+        inadmissible_area_state = x[inadmissible_area_index]
+
+        batch_dict["inadmissible_area"]["state"] = inadmissible_area_state
+
+        admissible_area_index = torch.logical_not(unsafe_mask)
+        admissible_area_state = x[admissible_area_index]
+
+        batch_dict["admissible_area"]["state"] = admissible_area_state
+
+
 
         return batch_dict
 
