@@ -32,9 +32,9 @@ def linear_schedule(initial_value: float) -> Callable[[float], float]:
 device = "cuda" if torch.cuda.is_available() else "cpu"
 system = point_robot
 
-# for i in range(0, 6):
+# for i in range(1, 2):
 #     render_sim = False
-#     log_dir = "logs/stable_baseline_logs_10/point_robot_without/" + "run" + str(i) + "/"
+#     log_dir = "logs/stable_baseline_logs/point_robot_without/" + "run" + str(i) + "/"
 #     os.makedirs(log_dir, exist_ok=True)
 
 #     # data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=512, training_points_num=int(1e6))

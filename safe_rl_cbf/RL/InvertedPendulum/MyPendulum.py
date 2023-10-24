@@ -117,7 +117,6 @@ class MyPendulumEnv(gym.Env):
         start_time = time.time()
         th, thdot = self.state  # th := theta
         action = action * self.max_torque
-
         g = self.g
         m = self.m
         l = self.l
@@ -136,12 +135,12 @@ class MyPendulumEnv(gym.Env):
             hs = self.h(s)
             if hs < 1:
                 gradh = self.h.jacobian(hs, s)
-                
-                
+
                 u_ref = torch.from_numpy(action).float().reshape((-1,self.h.dynamic_system.nu)).to(device)            
                 u_result, r_result = self.h.solve_CLF_QP(s, gradh, u_ref, epsilon=0.5)
 
-            
+                # print(f"u_ref={u_ref}, u_result={u_result}, s={s}, hs={hs}")
+
                 u = u_result.cpu().numpy().flatten()
 
                 if hs < 0:
@@ -231,6 +230,8 @@ class MyPendulumEnv(gym.Env):
             while self.h( torch.from_numpy(self.state).float().reshape((-1, 2)).to(self.h.device)) <= 0.8:
                 self.state =  self.np_random.uniform(low=low, high=high)
         
+        print(f"reset state: {self.state} !!!!!!!!!!!!")
+
         self.last_u = None
 
         if self.render_mode == "human":

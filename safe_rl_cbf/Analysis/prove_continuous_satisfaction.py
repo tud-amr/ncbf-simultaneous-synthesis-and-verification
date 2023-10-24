@@ -27,8 +27,8 @@ y_index = 1
 ##################### read data #######################
 system = inverted_pendulum_1    
 
-ncbf_stage_1_test_results = torch.load("ncbf_stage_1_test_results.pt")
-optimal_ncbf_test_results = torch.load("optimal_ncbf_test_results.pt")
+ncbf_stage_1_test_results = torch.load("ncbf_stage_1_test_results_2.pt")
+optimal_ncbf_test_results = torch.load("test_results.pt")
 
 domain_limit_lb, domain_limit_ub = system.domain_limits
 
@@ -65,6 +65,8 @@ s_unsafe_violation_val = []
 descent_violation = []
 
 inadmissible_boundary_state = []
+inadmissible_area_state = []
+admissible_area_state = []
 
 for batch_id in range(len(optimal_ncbf_test_results)):
     h_shape_s.append(optimal_ncbf_test_results[batch_id]["shape_h"]["state"])
@@ -72,6 +74,8 @@ for batch_id in range(len(optimal_ncbf_test_results)):
     s_unsafe_violation.append(optimal_ncbf_test_results[batch_id]["unsafe_violation"]["state"])
     descent_violation.append(optimal_ncbf_test_results[batch_id]["descent_violation"]["state"])
     inadmissible_boundary_state.append(optimal_ncbf_test_results[batch_id]["inadmissible_boundary"]["state"])
+    inadmissible_area_state.append(optimal_ncbf_test_results[batch_id]["inadmissible_area"]["state"])
+    admissible_area_state.append(optimal_ncbf_test_results[batch_id]["admissible_area"]["state"])
 
 
 h_shape_s_ncbf = torch.vstack(h_shape_s)
@@ -79,6 +83,8 @@ h_shape_val_ncbf = torch.vstack(h_shape_val)
 s_unsafe_violation_ncbf = torch.vstack(s_unsafe_violation)
 descent_violation_ncbf = torch.vstack(descent_violation)
 inadmissible_boundary_state_ncbf = torch.vstack(inadmissible_boundary_state)
+inadmissible_area_state_ncbf = torch.vstack(inadmissible_area_state)
+admissible_area_state_ncbf = torch.vstack(admissible_area_state)
 
 #####
 mat_contents = sio.loadmat("RA_result/extraOuts.mat")
@@ -131,79 +137,105 @@ Y_descent_ncbf = descent_violation_ncbf[:, y_index].detach().cpu().numpy()
 plt.figure()
 
 # Create contour lines or level curves using matpltlib.pyplt module
-contours = plt.contourf(hVS_XData, hVS_YData, hVS_ZData, levels=[-0.1, 0, 1], colors=['w','#a7f790','w'], extend='both')
+# contours = plt.contourf(hVS_XData, hVS_YData, hVS_ZData, levels=[-0.1, 0, 1], colors=['w','#a7f790','w'], extend='both')
 
 # contours2 = plt.contour(hVS0_XData, hVS0_YData, hVS0_ZData, levels=[0], colors='grey', linewidth=5)
 
 
+X_inadmissible_area = inadmissible_area_state_ncbf[:, x_index].detach().cpu().numpy()
+Y_inadmissible_area = inadmissible_area_state_ncbf[:, y_index].detach().cpu().numpy()
+plt.scatter(X_inadmissible_area, Y_inadmissible_area, s=1, c='#939393')
 
-plt.scatter(x_ncbf_1, y_ncbf_1, s=10, c='#63b2ee')
-plt.scatter(X_descent_ncbf_1, Y_descent_ncbf_1, s=10, c='#ff866f')
+X_admissible_area = admissible_area_state_ncbf[:, x_index].detach().cpu().numpy()
+Y_admissible_area = admissible_area_state_ncbf[:, y_index].detach().cpu().numpy()
+plt.scatter(X_admissible_area, Y_admissible_area, s=1, c='#B2EAAB')
+
+
+plt.scatter(x_ncbf_1, y_ncbf_1, s=10, c='#3171AD')
+plt.scatter(X_descent_ncbf_1, Y_descent_ncbf_1, s=10, c='#C66526')
 
 X = inadmissible_boundary_state_ncbf[:, x_index].detach().cpu().numpy()
 Y = inadmissible_boundary_state_ncbf[:, y_index].detach().cpu().numpy()
-plt.scatter(X, Y, s=2, c='#7cd6cf')
+plt.scatter(X, Y, s=1, c='#939393')
 
-plt.xlabel(r"$\theta$(rad)")
-plt.ylabel(r"$\dot{\theta}$(rad/s)")
-plt.xlim(domain_limit_lb[x_index], domain_limit_ub[x_index])
-plt.ylim(domain_limit_lb[y_index], domain_limit_ub[y_index])
+plt.xlabel(r"$\theta$(rad)", fontsize="15")
+plt.ylabel(r"$\dot{\theta}$(rad/s)", fontsize="15")
+plt.xticks(fontsize="15")
+plt.yticks(fontsize="15")
+plt.xlim(domain_limit_lb[x_index]+0.3, domain_limit_ub[x_index]-0.3)
+plt.ylim(domain_limit_lb[y_index]+0.7, domain_limit_ub[y_index]-0.7)
 # plt.title("shape of 0-superlevel set")
 
 
 legend_elements = [
-                    Line2D([0], [0], color='#7cd6cf', lw=2, label='Obstacles'),
-                    Patch(facecolor='#a7f790', edgecolor='#a7f790',
-                        label='LST'),
-                    Patch(facecolor='#63b2ee', edgecolor='#63b2ee',
-                        label='ours'),
-                    Patch(facecolor='#ff866f', edgecolor='#ff866f',
-                    label='violation')
+                    Patch(facecolor='#939393', edgecolor='#939393',
+                        label='Inadmissible'),
+                    Patch(facecolor='#B2EAAB', edgecolor='#B2EAAB',
+                        label='Admissible'),
+                    Patch(facecolor='#3171AD', edgecolor='#3171AD',
+                        label='Ours'),
+                    Patch(facecolor='#C66526', edgecolor='#C66526',
+                    label='Violation')
                 ]
 
-plt.legend(handles=legend_elements, bbox_to_anchor=(1, 1), fontsize="8", loc='upper right')
+plt.legend(handles=legend_elements, bbox_to_anchor=(1, 1), fontsize="12", loc='upper right')
+plt.xlabel(r"$\theta$ (rad)", fontsize="15")
+plt.ylabel(r"$\dot{\theta}$ (rad/s)", fontsize="15")
+plt.xticks(fontsize="15")
+plt.yticks(fontsize="15")
 
-
-plt.savefig("fig/prove_continuous_satisfaction/1.png")
+plt.savefig("fig/prove_continuous_satisfaction/1.png", dpi=300)
 
 #######################
 plt.figure()
 
 
+X_inadmissible_area = inadmissible_area_state_ncbf[:, x_index].detach().cpu().numpy()
+Y_inadmissible_area = inadmissible_area_state_ncbf[:, y_index].detach().cpu().numpy()
+plt.scatter(X_inadmissible_area, Y_inadmissible_area, s=1, c='#939393')
+
+X_admissible_area = admissible_area_state_ncbf[:, x_index].detach().cpu().numpy()
+Y_admissible_area = admissible_area_state_ncbf[:, y_index].detach().cpu().numpy()
+plt.scatter(X_admissible_area, Y_admissible_area, s=1, c='#B2EAAB')
+
 
 # Create contour lines or level curves using matpltlib.pyplt module
-contours = plt.contourf(hVS_XData, hVS_YData, hVS_ZData, levels=[-0.1, 0, 1], colors=['w','#a7f790','w'], extend='both')
+# contours = plt.contourf(hVS_XData, hVS_YData, hVS_ZData, levels=[-0.1, 0, 1], colors=['w','#a7f790','w'], extend='both')
 
 
-plt.scatter(x_ncbf, y_ncbf, s=10, c='#63b2ee')
-plt.scatter(X_descent_ncbf, Y_descent_ncbf, s=10, c='#ff866f')
+plt.scatter(x_ncbf, y_ncbf, s=10, c='#3171AD')
+plt.scatter(X_descent_ncbf, Y_descent_ncbf, s=10, c='#C66526')
 
 
 X = inadmissible_boundary_state_ncbf[:, x_index].detach().cpu().numpy()
 Y = inadmissible_boundary_state_ncbf[:, y_index].detach().cpu().numpy()
-plt.scatter(X, Y, s=2, c='#7cd6cf')
+plt.scatter(X, Y, s=1, c='#939393')
 
-plt.xlabel(r"$\theta$(rad)")
-plt.ylabel(r"$\dot{\theta}$(rad/s)")
-plt.xlim(domain_limit_lb[x_index], domain_limit_ub[x_index])
-plt.ylim(domain_limit_lb[y_index], domain_limit_ub[y_index])
+plt.xlabel(r"$\theta$ (rad)", fontsize="15")
+plt.ylabel(r"$\dot{\theta}$ (rad/s)", fontsize="15")
+plt.xticks(fontsize="15")
+plt.yticks(fontsize="15")
+plt.xlim(domain_limit_lb[x_index]+0.3, domain_limit_ub[x_index]-0.3)
+plt.ylim(domain_limit_lb[y_index]+0.7, domain_limit_ub[y_index]-0.7)
+
 # plt.title("shape of 0-superlevel set")
 
 
 legend_elements = [
-                    Line2D([0], [0], color='#7cd6cf', lw=2, label='Obstacles'),
-                    Patch(facecolor='#a7f790', edgecolor='#a7f790',
-                        label='LST'),
-                    Patch(facecolor='#63b2ee', edgecolor='#63b2ee',
-                        label='ours'),
-                    Patch(facecolor='#ff866f', edgecolor='#ff866f',
-                    label='violation')
+                    Patch(facecolor='#939393', edgecolor='#939393',
+                        label='Inadmissible'),
+                    Patch(facecolor='#B2EAAB', edgecolor='#B2EAAB',
+                        label='Admissible'),
+                    Patch(facecolor='#3171AD', edgecolor='#3171AD',
+                        label='Ours'),
+                    Patch(facecolor='#C66526', edgecolor='#C66526',
+                    label='Violation')
                 ]
 
-plt.legend(handles=legend_elements, bbox_to_anchor=(1, 1), fontsize="8", loc='upper right')
+plt.legend(handles=legend_elements, bbox_to_anchor=(1, 1), fontsize="12", loc='upper right')
 
 
-plt.savefig("fig/prove_continuous_satisfaction/2.png")
+plt.savefig("fig/prove_continuous_satisfaction/2.png", dpi=300)
 
 #######################
 
@@ -212,41 +244,54 @@ s_training = torch.load("saved_models/inverted_pendulum_umax_12/s_training.pt")
 plt.figure()
 
 
+X_admissible_area = admissible_area_state_ncbf[:, x_index].detach().cpu().numpy()
+Y_admissible_area = admissible_area_state_ncbf[:, y_index].detach().cpu().numpy()
+plt.scatter(X_admissible_area, Y_admissible_area, s=1, c='#B2EAAB')
+
+
 
 # Create contour lines or level curves using matpltlib.pyplt module
-contours = plt.contourf(hVS_XData, hVS_YData, hVS_ZData, levels=[-0.1, 0, 1], colors=['w','#a7f790','w'], extend='both')
+# contours = plt.contourf(hVS_XData, hVS_YData, hVS_ZData, levels=[-0.1, 0, 1], colors=['w','#a7f790','w'], extend='both')
 
-plt.scatter(s_training[:,0], s_training[:,1], s=5, c='#3a4856')
 
-plt.scatter(x_ncbf, y_ncbf, s=10, c='#63b2ee', alpha=0.02)
+plt.scatter(x_ncbf_1, y_ncbf_1, s=10, c='#3171AD')
 # plt.scatter(X_descent_ncbf, Y_descent_ncbf, s=10, c='#ff866f')
+
+plt.scatter(s_training[:,0], s_training[:,1], s=5, c='#000000')
+
+
+X_inadmissible_area = inadmissible_area_state_ncbf[:, x_index].detach().cpu().numpy()
+Y_inadmissible_area = inadmissible_area_state_ncbf[:, y_index].detach().cpu().numpy()
+plt.scatter(X_inadmissible_area, Y_inadmissible_area, s=1, c='#939393')
 
 
 X = inadmissible_boundary_state_ncbf[:, x_index].detach().cpu().numpy()
 Y = inadmissible_boundary_state_ncbf[:, y_index].detach().cpu().numpy()
-plt.scatter(X, Y, s=2, c='#7cd6cf')
+plt.scatter(X, Y, s=1, c='#939393')
 
 # sns.kdeplot(x=s_training[:,0], y=s_training[:,1], cmap="Blues", fill=True, thresh=0)
 
-
-plt.xlabel(r"$\theta$(rad)")
-plt.ylabel(r"$\dot{\theta}$(rad/s)")
-plt.xlim(domain_limit_lb[x_index], domain_limit_ub[x_index])
-plt.ylim(domain_limit_lb[y_index], domain_limit_ub[y_index])
+plt.xlabel(r"$\theta$ (rad)", fontsize="15")
+plt.ylabel(r"$\dot{\theta}$ (rad/s)", fontsize="15")
+plt.xticks(fontsize="15")
+plt.yticks(fontsize="15")
+plt.xlim(domain_limit_lb[x_index]+0.3, domain_limit_ub[x_index]-0.3)
+plt.ylim(domain_limit_lb[y_index]+0.7, domain_limit_ub[y_index]-0.7)
 # plt.title("shape of 0-superlevel set")
 
 
 legend_elements = [
-                    Line2D([0], [0], color='#7cd6cf', lw=2, label='Obstacles'),
-                    Patch(facecolor='#a7f790', edgecolor='#a7f790',
-                        label='LST'),
-                    Patch(facecolor='#63b2ee', edgecolor='#63b2ee',
-                        label='ours'),
-                    Line2D([], [], color='#3a4856', marker='.', linestyle='None',
-                          markersize=5, label='training data')
+                    Patch(facecolor='#939393', edgecolor='#939393',
+                        label='Inadmissible'),
+                    Patch(facecolor='#B2EAAB', edgecolor='#B2EAAB',
+                        label='Admissible'),
+                    Patch(facecolor='#3171AD', edgecolor='#3171AD',
+                        label='Ours'),
+                    Line2D([], [], color='#000000', marker='.', linestyle='None',
+                          markersize=5, label='Counterexamples')
                 ]
 
-plt.legend(handles=legend_elements, bbox_to_anchor=(1, 1), fontsize="8", loc='upper right')
+plt.legend(handles=legend_elements, bbox_to_anchor=(1, 1), fontsize="12", loc='upper right')
 
 
-plt.savefig("fig/prove_continuous_satisfaction/3.png")
+plt.savefig("fig/prove_continuous_satisfaction/3.png", dpi=300)

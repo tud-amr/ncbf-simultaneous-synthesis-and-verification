@@ -40,10 +40,10 @@ for i in range(0, 5):
    
     file_path_without_CBF = root_dir + "IP_without/run" + str(i) + "/without_CBF_reward.pickle"
 
-    with open(file_path_without_CBF, 'rb') as f:
-        # The protocol version used is detected automatically, so we do not
-        # have to specify it.
-        data2 = pickle.load(f)
+    # with open(file_path_without_CBF, 'rb') as f:
+    #     # The protocol version used is detected automatically, so we do not
+    #     # have to specify it.
+    #     data2 = pickle.load(f)
 
     
     data2 = np.array(data2)

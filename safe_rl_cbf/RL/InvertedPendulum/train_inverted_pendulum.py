@@ -23,11 +23,11 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using {device} device")
 
 
-for i in range(0, -6):
+for i in range(0, 1):
     data_module = TrainingDataModule(system=inverted_pendulum_1, val_split=0, train_batch_size=1024, training_points_num=int(1e5), train_mode=0)
 
     NN = NeuralNetwork.load_from_checkpoint("saved_models/inverted_pendulum_umax_12/checkpoints/epoch=4-step=5.ckpt", dynamic_system=inverted_pendulum_1, data_module=data_module )
-    NN = NN.to(device)
+    
 
     log_dir = "logs/stable_baseline_logs_IP_23_Oct/IP_without/" + "run" + str(i) + "/"
     os.makedirs(log_dir, exist_ok=True)
@@ -42,12 +42,12 @@ for i in range(0, -6):
     model.learn(total_timesteps=50000, callback=custom_cb, tb_log_name= my_ip_env.prefix)
     model.save(log_dir + "ip_without_CBF")
 
-for i in range(0, 2):
+for i in range(0, 1):
 
     data_module = TrainingDataModule(system=inverted_pendulum_1, val_split=0, train_batch_size=1024, training_points_num=int(1e5), train_mode=0)
 
     NN = NeuralNetwork.load_from_checkpoint("saved_models/inverted_pendulum_umax_12/checkpoints/epoch=4-step=5.ckpt", dynamic_system=inverted_pendulum_1, data_module=data_module )
-    NN = NN.to(device)
+    
 
     log_dir = "logs/stable_baseline_logs_IP_23_Oct/IP_with/" + "run" + str(i) + "/"
     os.makedirs(log_dir, exist_ok=True)

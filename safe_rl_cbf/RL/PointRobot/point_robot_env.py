@@ -156,6 +156,7 @@ class PointRobotEnv(gym.Env):
         else:
             u = action
 
+
         obs = self.get_observation()
         x, y, v_x, v_y = self.state
 
