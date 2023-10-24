@@ -13,11 +13,11 @@ render_sim = True #if True, a graphic is generated
 
 env = PointRobotEnv(render_sim=render_sim)
 
-model = PPO.load("point_robot_without_cbf")
+model = PPO.load("point_robot_base_10e5")
 model.set_env(env)
 
 data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=512, training_points_num=int(1e6))
-NN = NeuralNetwork.load_from_checkpoint("saved_models/point_robot_2/checkpoints/epoch=85-step=5402.ckpt", dynamic_system=system, data_module=data_module )
+NN = NeuralNetwork.load_from_checkpoint("saved_models/point_robot/checkpoints/epoch=4-step=20.ckpt", dynamic_system=system, data_module=data_module )
 NN.to(device)
 
 # env.set_barrier_function(NN)

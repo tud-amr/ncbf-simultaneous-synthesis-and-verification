@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 import pickle
 
 
-reward_with_CBF_file_path = "logs/stable_baseline_logs/point_robot_with/run5/with_CBF_reward.pickle"
-reward_without_CBF_file_path = "logs/stable_baseline_logs/point_robot_without/run5/without_CBF_reward.pickle"
+reward_with_CBF_file_path = "logs/stable_baseline_logs_backup/point_robot_with/run5/with_CBF_reward.pickle"
+reward_without_CBF_file_path = "logs/stable_baseline_logs_backup/point_robot_without/run5/without_CBF_reward.pickle"
 
 
 with open(reward_with_CBF_file_path, 'rb') as f:
@@ -30,7 +30,7 @@ epoch_num_2 = np.arange(data2.shape[0])
 plt.figure()
 plt.plot(epoch_num_1, data1, color='b', linewidth='2', label='with CBF')
 plt.plot(epoch_num_2, data2, color='r', linewidth='2', label='without CBF')
-plt.legend()
+plt.legend(loc='lower right',  fontsize="10")
 plt.xlabel("time-step")
 plt.ylabel("reward")
 plt.title("the reward curve")

@@ -91,23 +91,23 @@ class NeuralNetwork(pl.LightningModule):
         #         nn.Linear(256,1)
         #     )
 
-        self.h = nn.Sequential(
-                nn.Linear(self.dynamic_system.ns, 256),
-                nn.Tanh(),
-                nn.Linear(256, 256),
-                nn.Tanh(),
-                nn.Linear(256, 256),
-                nn.Tanh(),
-                nn.Linear(256, 1)
-            )
-
         # self.h = nn.Sequential(
-        #         nn.Linear(self.dynamic_system.ns, 32),
+        #         nn.Linear(self.dynamic_system.ns, 256),
         #         nn.Tanh(),
-        #         nn.Linear(32, 32),
+        #         nn.Linear(256, 256),
         #         nn.Tanh(),
-        #         nn.Linear(32, 1)
+        #         nn.Linear(256, 256),
+        #         nn.Tanh(),
+        #         nn.Linear(256, 1)
         #     )
+
+        self.h = nn.Sequential(
+                nn.Linear(self.dynamic_system.ns, 32),
+                nn.Tanh(),
+                nn.Linear(32, 32),
+                nn.Tanh(),
+                nn.Linear(32, 1)
+            )
         
 
         # self.h = Transformer(self.dynamic_system.ns, 160)
@@ -696,7 +696,7 @@ class NeuralNetwork(pl.LightningModule):
       
 
         u_qp, d_min = self.get_control_vertices(s)
-        # u_qp = self.nominal_controller(s)
+        u_qp = self.nominal_controller(s)
 
         lb_dx, ub_dx = self.dynamic_system.range_dxdt(data_l, data_u, u_qp)
         # lb_dx = dxdt_min
@@ -840,7 +840,7 @@ class NeuralNetwork(pl.LightningModule):
 
         u_qp, d_min = self.get_control_vertices(s)
 
-        # u_qp = self.nominal_controller(s)
+        u_qp = self.nominal_controller(s)
 
         if u_qp is not None:
             control_term = torch.bmm(
@@ -895,7 +895,7 @@ class NeuralNetwork(pl.LightningModule):
         # loss.append(("hji_vi_descent_loss_term", hji_vi_descent_loss_term))
         if self.train_mode != 2:
             loss.append(("hji_vi_descent_loss_term", hji_vi_loss_term))
-
+            
 
         #############################################
         # xdot = self.dynamics_model.closed_loop_dynamics(x, u_qp, params=s)
@@ -1395,7 +1395,7 @@ class NeuralNetwork(pl.LightningModule):
                     Lg_V_np = Lg_V[batch_idx, :].detach().cpu().numpy()
                     Lf_V_np = Lf_V[batch_idx, 0].detach().cpu().numpy()
                     V_np = V[batch_idx, 0].detach().cpu().numpy()
-                    clf_constraint = -(Lf_V_np + Lg_V_np @ u + 1 * V_np - epsilon)
+                    clf_constraint = -(Lf_V_np + Lg_V_np @ u + self.clf_lambda * V_np - epsilon)
                     if allow_relaxation:
                         clf_constraint -= r[0]
                     model.addConstr(clf_constraint <= 0.0, name=f"Scenario {0} Decrease")
@@ -1636,6 +1636,7 @@ class NeuralNetwork(pl.LightningModule):
 
         Lf_h, Lg_h, Ld_V = self.V_lie_derivatives(s, gradh)
         u = u_vi.expand(Lg_h.shape[0], -1)
+        u = self.nominal_controller(s)
         Lg_h_u = Lg_h * u
         dt = Lf_h + Lg_h_u.sum(dim=1, keepdim=True)
         return dt
@@ -1799,6 +1800,7 @@ class NeuralNetwork(pl.LightningModule):
         K = torch.ones(batch_size, self.dynamic_system.nu, self.dynamic_system.ns) * torch.unsqueeze(self.dynamic_system.K, dim=0)
         K = K.to(s.device)
 
+
         u = -torch.bmm(K, s.unsqueeze(dim=-1))
         u = u.squeeze(dim=-1)
         u_lower_bd ,  u_upper_bd = self.dynamic_system.control_limits
@@ -1843,7 +1845,7 @@ class NeuralNetwork(pl.LightningModule):
         hs = self.h(s_random)
         gradh = self.jacobian(hs, s_random)
 
-
+       
         if self.train_mode == 0:
          
             component_losses.update(

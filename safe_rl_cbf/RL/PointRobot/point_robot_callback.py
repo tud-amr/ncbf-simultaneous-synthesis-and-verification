@@ -71,6 +71,7 @@ class CustomCallback(BaseCallback):
         self.logger.record(env.prefix + "step_executing_time", env.step_executing_time) 
         self.logger.record(env.prefix + "safety_violation_times", env.break_safety)
         
+        env.epoch_reward.append(env.reward)
         
         return True
 
@@ -82,6 +83,7 @@ class CustomCallback(BaseCallback):
         # env.training_trajectories.append( np.hstack(env.epoch_trajectory) )
         average_reward = np.mean(env.epoch_reward)
         env.training_rewards.append(average_reward)
+
         pass
 
     def _on_training_end(self) -> None:

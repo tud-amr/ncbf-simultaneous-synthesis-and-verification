@@ -76,7 +76,7 @@ legend_elements = [
                     Line2D([0], [0], color='b', lw=2, label='h(s) = 0'),
                 ]
 
-plt.legend(handles=legend_elements, bbox_to_anchor=(1, 1), fontsize="8", loc='upper right')
+plt.legend(handles=legend_elements, bbox_to_anchor=(1, 1), fontsize="10", loc='lower right')
 
 plt.xlabel("x")
 plt.ylabel("y")

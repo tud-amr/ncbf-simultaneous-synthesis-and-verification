@@ -427,7 +427,7 @@ class TrainingDataModule(pl.LightningDataModule):
             config = Config()
             config.use_polytope_in_forall = True
             config.use_local_optimization = True
-            config.precision = 1e-2
+            config.precision = 1e-1
 
             u_NN = (-2.0*x1 - 3.2699*x2) 
             print('u_NN',u_NN)
@@ -447,7 +447,7 @@ class TrainingDataModule(pl.LightningDataModule):
                 a2.append(tanh(z2[j]))
             z3 = np.dot(a2,w3.T)+b3
 
-            V_learn = tanh(z3.item(0))
+            V_learn = tanh(z3.item())
 
             print('===========Verifying==========')        
             start_ = timeit.default_timer() 
@@ -460,20 +460,23 @@ class TrainingDataModule(pl.LightningDataModule):
             s = torch.rand(self.training_points_num, self.system.ns) * domain_bd_gap + domain_lower_bd
            
             if (result): 
-                print("Not a Lyapunov function. Found counterexample: ")
+                print("Not a CBF function. Found counterexample: ")
                 print(result)
-                s_samples, ce = AddCounterexamplesCBF(s,result,100)
+                ce = AddCounterexamplesCBF(s,result,10)
+                self.SMT_verification_time += (stop_ - start_)
+                self.SMT_CE_num += ce.shape[0]
+                self.augment_data = torch.cat((self.augment_data,ce), dim=0)
+                if self.augment_data.shape[0] > self.maximum_augment_data_num:
+                    self.augment_data = self.augment_data[-self.maximum_augment_data_num:]
             else:  
-                valid = True
-                print("Satisfy conditions!!")
-                print(V_learn, " is a Lyapunov function.")
-            self.SMT_verification_time += (stop_ - start_)
-            self.SMT_CE_num += ce.shape[0]
-            self.augment_data = torch.cat((self.augment_data,ce), dim=0)
-            if self.augment_data.shape[0] > self.maximum_augment_data_num:
-                self.augment_data = self.augment_data[-self.maximum_augment_data_num:]
+                self.SMT_verification_time += (stop_ - start_)
+                self.verified = True
+                print("Satisfy conditions!!!!!!!!!!!!!")
+                # print(V_learn, " is a CBF.")
+            
             print('==============================') 
-
+            s_samples = s
+            s_samples = torch.cat((s_samples, self.augment_data), dim=0)
             assert self.training_grid_gap is None
             sample_data_grid_gap = torch.zeros(s_samples.shape[0], self.system.ns)
             torch.save(self.augment_data, "SMT_augment_data.pt")

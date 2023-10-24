@@ -33,9 +33,9 @@ class PointRobotEnv(gym.Env):
         max_observation = np.array([1, 1, 1, 1], dtype=np.float32)
         self.observation_space = spaces.Box(low=min_observation, high=max_observation, dtype=np.float32)
         
-        self.radius = 0.3
+        self.radius = 0.15
 
-        self.x_init = 1.0
+        self.x_init = 0.5
         self.y_init = 1.0
         self.v_init = 0.0
       
@@ -48,7 +48,7 @@ class PointRobotEnv(gym.Env):
         
         # simulation property
         self.current_time_step = 0
-        self.max_time_steps = 1000
+        self.max_time_steps = 1500
         self.scale = 100.0
         self.dt = 1/50
         self.render_sim = render_sim
@@ -104,8 +104,8 @@ class PointRobotEnv(gym.Env):
         x = 2
         y = 1
         body.position = (x * self.scale, y * self.scale)
-        width = 1
-        height = 2
+        width = 1 - self.radius * 2
+        height = 2 - self.radius * 2
         shape = pymunk.Poly.create_box(body, size=( width * self.scale, height * self.scale ))
         self.space.add(body, shape)
     
@@ -127,26 +127,32 @@ class PointRobotEnv(gym.Env):
             s = torch.from_numpy(self.state).float().reshape((-1, self.h.dynamic_system.ns)).to(device)
             
             hs = self.h(s)
-            gradh = self.h.jacobian(hs, s)
+            if hs < 0.1:
+                gradh = self.h.jacobian(hs, s)
+                
+                
+                u_ref = torch.from_numpy(action).float().reshape((-1,self.h.dynamic_system.nu)).to(device)            
+                u_result, r_result = self.h.solve_CLF_QP(s, gradh, u_ref, epsilon=0.0)
+
             
-            
-            u_ref = torch.from_numpy(action).float().reshape((-1,self.h.dynamic_system.nu)).to(device)            
-            u_result, r_result = self.h.solve_CLF_QP(s, gradh, u_ref, epsilon=0.1)
+                u = u_result.cpu().numpy().flatten()
 
-           
-            u = u_result.cpu().numpy().flatten()
-            if hs < 0:
-                # print(f"Current state [{self.state}] is unsafe, h(s)={hs}, u={u}")
-                # raise Exception(f"Current state [{self.state[0]}, {self.state[1]}] is unsafe, h(s)={hs}")
-                pass
+                if hs < 0:
+                    # print(f"Current state [{self.state}] is unsafe, h(s)={hs}, u={u}")
+                    # raise Exception(f"Current state [{self.state[0]}, {self.state[1]}] is unsafe, h(s)={hs}")
+                    pass
 
-            if r_result > 0.0:
-                self.break_safety += 1
-            #     raise Exception(f"The QP is infeasible, slack variable is {r_result}")
+                if r_result > 0.0:
+                    self.break_safety += 1
+                #     raise Exception(f"The QP is infeasible, slack variable is {r_result}")
 
-            if torch.abs( torch.norm(u_result - u_ref) ) > 0.1:
-                reward += -15
-
+                if torch.abs( torch.norm(u_result - u_ref) ) > 0.1:
+                    # pass
+                    # print(f"u_ref={u_ref}, u_result={u_result}, hs={hs}")
+                    reward += -0.02
+                    # done = True
+            else:
+                u = action
         else:
             u = action
 
@@ -178,66 +184,69 @@ class PointRobotEnv(gym.Env):
 
         distance_to_target_x = self.x_target - x
         distance_to_target_y = self.y_target - y
-        distance_to_target = np.sqrt(distance_to_target_x ** 2 + distance_to_target_y ** 2)
+        distance_to_target = np.sqrt(distance_to_target_x ** 2 + distance_to_target_y ** 2 )
         heading_to_target = self.normalize_angle(np.arctan2(distance_to_target_y, distance_to_target_x))
         heading = self.normalize_angle(np.arctan2(v_y, v_x))
         heading_error = heading_to_target - heading
 
 
         # reward += (1.0 / (  np.abs(distance_to_target_x) + 0.1 )) + (1.0 / (  np.abs(distance_to_target_y) + 0.1 )) - 0.01 * np.abs(heading_error)
-        reward += - 0.1 * distance_to_target -  0.1 * np.abs(heading_error) 
+        reward += - 0.01 * distance_to_target -  0.01 * np.abs(heading_error) 
+        # reward = -0.01
         
         done = False
         info = {}
         self.epoch_trajectory.append( np.array([[x], [y]]) )
 
-
         if np.abs(obs[0]) == 0 or np.abs(obs[1]) == 0 or np.abs(obs[0])==1 or np.abs(obs[1])==1:
             # reach the boundary
             print("collision with wall!!!!!!!!!!!!")
-            reward = -1000
+            reward = -5
             self.break_safety += 1
             done = True
-            
+            self.current_time_step = 0
             self.training_trajectories.append( {"traj": np.hstack(self.epoch_trajectory), "collision": True})
             self.epoch_trajectory.clear()
-
-            print(f"state is {self.state}")
             
-           
+            # print(f"state is {self.state}")
+            
 
-        elif np.abs(x - 2) < 0.5 - self.radius/2 and np.abs(y - 1) < 1 - self.radius/2:
+        elif np.abs(x - 2) < 0.5  and np.abs(y - 1) < 1 :
             print("collision with obstacle!!!!!!!!!!!!")
-            reward = -1000
+            reward = -5
             self.break_safety += 1
             done = True
+            self.current_time_step = 0
             self.training_trajectories.append( {"traj": np.hstack(self.epoch_trajectory), "collision": True})
             self.epoch_trajectory.clear()
+            
             
 
         elif np.linalg.norm(np.array([x, y]) - np.array([self.x_target, self.y_target])) < 0.2:
             print("reach goal!!!!!!!!!!!!")
-            reward = 1000
+            reward = 10
             done = True
+            self.current_time_step = 0
             self.training_trajectories.append( {"traj": np.hstack(self.epoch_trajectory), "collision": False})
             self.epoch_trajectory.clear()
+
            
              
         
         elif self.current_time_step > self.max_time_steps:
-            self.done = True
+            print("reach max time steps!!!!!!!!!!!!")
+            done = True
             self.current_time_step = 0
             self.training_trajectories.append( {"traj": np.hstack(self.epoch_trajectory), "collision": False})
             self.epoch_trajectory.clear()
-           
-        
+            
+            
         else:
             pass
 
         
 
         self.reward = reward
-        self.epoch_reward.append(reward)
 
         end_time = time.time()
         self.step_executing_time = end_time - start_time
@@ -260,8 +269,8 @@ class PointRobotEnv(gym.Env):
 
     def reset(self):
         
-        self.x_init = 1 # random.uniform(2, 3)
-        self.y_init = 1 # random.uniform(5, 6)
+        self.x_init = random.uniform(0.3, 1)
+        self.y_init = random.uniform(0.5, 3)
         self.point_robot.set_states(self.x_init, self.y_init)
         return self.get_observation()
 
