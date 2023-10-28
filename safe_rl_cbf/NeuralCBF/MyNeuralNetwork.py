@@ -59,7 +59,7 @@ class NeuralNetwork(pl.LightningModule):
         learn_shape_epochs: int = 10,
         train_mode: int = 0,
         primal_learning_rate: float = 1e-3,
-        gamma: float = 0.9,
+        gamma: float = 0.01,
         clf_lambda: float = 0.5,
         clf_relaxation_penalty: float = 50.0,
         ):
@@ -72,14 +72,13 @@ class NeuralNetwork(pl.LightningModule):
         if train_mode == 0:
             self.learning_rate = primal_learning_rate
         elif (train_mode == 1 or train_mode == 3):
-            self.learning_rate = 5e-4
+            self.learning_rate = 5e-5
         elif train_mode == 2:
             self.learning_rate = 5e-5
 
         self.dt = self.dynamic_system.dt
         self.gamma = gamma
-        self.beta = 0.99
-       
+        
         self.require_grad_descent_loss = require_grad_descent_loss
         # self.h = nn.Sequential(
         #         nn.Linear(self.dynamic_system.ns, 256),
@@ -91,23 +90,23 @@ class NeuralNetwork(pl.LightningModule):
         #         nn.Linear(256,1)
         #     )
 
-        # self.h = nn.Sequential(
-        #         nn.Linear(self.dynamic_system.ns, 256),
-        #         nn.Tanh(),
-        #         nn.Linear(256, 256),
-        #         nn.Tanh(),
-        #         nn.Linear(256, 256),
-        #         nn.Tanh(),
-        #         nn.Linear(256, 1)
-        #     )
-
         self.h = nn.Sequential(
-                nn.Linear(self.dynamic_system.ns, 32),
+                nn.Linear(self.dynamic_system.ns, 256),
                 nn.Tanh(),
-                nn.Linear(32, 32),
+                nn.Linear(256, 256),
                 nn.Tanh(),
-                nn.Linear(32, 1)
+                nn.Linear(256, 256),
+                nn.Tanh(),
+                nn.Linear(256, 1)
             )
+
+        # self.h = nn.Sequential(
+        #         nn.Linear(self.dynamic_system.ns, 32),
+        #         nn.Tanh(),
+        #         nn.Linear(32, 32),
+        #         nn.Tanh(),
+        #         nn.Linear(32, 1)
+        #     )
         
 
         # self.h = Transformer(self.dynamic_system.ns, 160)
@@ -189,16 +188,16 @@ class NeuralNetwork(pl.LightningModule):
     def test_dataloader(self):
         return self.data_module.test_dataloader()
 
-    def set_previous_cbf(self, h):
-        self.h0.load_state_dict(h.state_dict())
-        self.use_h0 = True
+    def synchronize_cbf(self):
+        self.h.load_state_dict(self.h0.state_dict())
+      
         
     def forward(self, s):
         hs = self.h(s)
 
         return hs
 
-    def jacobian(self, y, x):
+    def jacobian(self, x):
         ''' jacobian of y wrt x '''
         # meta_batch_size, num_observations = y.shape[:2]
         # jac = torch.zeros(meta_batch_size, y.shape[-1], x.shape[-1]).to(y.device) # (meta_batch_size*num_points, 2, 2)
@@ -213,12 +212,14 @@ class NeuralNetwork(pl.LightningModule):
         x_norm = x 
 
         bs = x_norm.shape[0]
-        JV = torch.zeros(
+        
+        
+        JV_h = torch.zeros(
             (bs, self.dynamic_system.ns, self.dynamic_system.ns)
         ).type_as(x)
         # and for each non-angle dimension, we need to scale by the normalization
         for dim in range(self.dynamic_system.ns):
-            JV[:, dim, dim] = 1.0
+            JV_h[:, dim, dim] = 1.0
 
         # Now step through each layer in V
         V = x_norm
@@ -226,14 +227,14 @@ class NeuralNetwork(pl.LightningModule):
             V = layer(V)
 
             if isinstance(layer, nn.Linear):
-                JV = torch.matmul(layer.weight, JV)
+                JV_h = torch.matmul(layer.weight, JV_h)
             elif isinstance(layer, nn.Tanh):
-                JV = torch.matmul(torch.diag_embed(1 - V ** 2), JV)
+                JV_h = torch.matmul(torch.diag_embed(1 - V ** 2), JV_h)
             elif isinstance(layer, nn.ReLU):
-                JV = torch.matmul(torch.diag_embed(torch.sign(V)), JV)
+                JV_h = torch.matmul(torch.diag_embed(torch.sign(V)), JV_h)
 
-       
-        return JV
+
+        return JV_h
     
     def get_max_grad_with_params(self, loss):
 
@@ -369,16 +370,12 @@ class NeuralNetwork(pl.LightningModule):
         
         return Lf_V, Lg_V, Ld_V
 
-    def boundary_loss(
+    def hji_vi_loss(
         self,
         s : torch.Tensor,
         safe_mask: torch.Tensor,
         unsafe_mask: torch.Tensor,
-        hs : torch.Tensor,
-        gradh : torch.Tensor,
-        coefficient_for_performance_state_loss: float=1e2,
-        coefficient_for_unsafe_state_loss: float=1e2,
-        accuracy: bool = False,
+        coefficient: float=1e2,
     ) -> List[Tuple[str, torch.Tensor]]:
         """
         Evaluate the loss on the CLBF due to boundary conditions
@@ -395,59 +392,23 @@ class NeuralNetwork(pl.LightningModule):
         # Compute loss to encourage satisfaction of the following conditions...
         loss = []
 
-        baseline = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values.detach() - 0.1
+        hs = self.h0(s)
+        baseline = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values.detach() - self.gamma
 
         safe_mask = torch.logical_not(unsafe_mask)
 
-        if self.dynamic_system.nu != 0:
-            # find the action that maximize the hamiltonian
-            hs_next_list = []
-            for u in self.u_v:
-                with torch.no_grad():
-                    x_next = self.dynamic_system.step(s, u=torch.ones(s.shape[0], self.dynamic_system.nu).to(s.device)*u.to(s.device))
-                    hs_next = self.h(x_next)
-                    hs_next_list.append(hs_next)
-
-            hs_next = torch.stack(hs_next_list, dim=1)
-            _ , index_control = torch.max(hs_next, dim=1, keepdim=True)
-
-            index_control = index_control.squeeze()
-            u_v = torch.cat(self.u_v, dim=0)
-            u_max = u_v[index_control]
-            u_max = u_max.to(s.device)
-        else:
-            u_max = None
+        u_max, d_min = self.get_control_vertices(s)
         
-        if self.dynamic_system.nd != 0:
-            # find the disturbance that minimize the hamiltonian
-            hs_next_list = []
-            for d in self.d_v:
-                with torch.no_grad():
-                    x_next = self.dynamic_system.step(s, d=torch.ones(s.shape[0], self.dynamic_system.nd).to(s.device)*d.to(s.device))
-                    hs_next = self.h(x_next)
-                    hs_next_list.append(hs_next)
-
-            hs_next = torch.stack(hs_next_list, dim=1)
-            _, index_control = torch.min(hs_next, dim=1, keepdim=True)
-
-            index_control = index_control.squeeze()
-            d_v = torch.cat(self.d_v, dim=0)
-            d_min = d_v[index_control]
-            d_min = d_min.to(s.device)
-        else:
-            d_min = None
-        
-
         # compute the hamiltonian
         with torch.no_grad():
             x_next = self.dynamic_system.step(s, u=u_max, d=d_min)
-            hs_next = self.h(x_next)
+            hs_next = self.h0(x_next)
 
 
         gamma = 0.99
         hs_bar = (1- gamma) * baseline + gamma * torch.min(baseline, hs_next)
 
-        safe_violation = coefficient_for_performance_state_loss * torch.abs(  hs_bar - hs )
+        safe_violation = coefficient * torch.abs(  hs_bar - hs )
         safe_hs_term =  safe_violation.mean()
         if not torch.isnan(safe_hs_term):
             loss.append(("safe_region_term", safe_hs_term))
@@ -693,7 +654,7 @@ class NeuralNetwork(pl.LightningModule):
       
 
         u_qp, d_min = self.get_control_vertices(s)
-        u_qp = self.nominal_controller(s)
+       
 
         lb_dx, ub_dx = self.dynamic_system.range_dxdt(data_l, data_u, u_qp)
         # lb_dx = dxdt_min
@@ -743,7 +704,7 @@ class NeuralNetwork(pl.LightningModule):
         for i in range(N_samples):
             x_sample = torch.rand_like(s) * (data_u - data_l) + data_l
             hs_sample = self.h(x_sample)
-            jacobian_sample = self.jacobian(hs_sample, x_sample)
+            jacobian_sample = self.jacobian(x_sample)
 
             jacobian_lower_list.append(jacobian_sample)
             jacobian_upper_list.append(jacobian_sample)
@@ -791,24 +752,18 @@ class NeuralNetwork(pl.LightningModule):
 
         return loss
 
-    def hji_vi_loss(
+    def cbvf_vi_loss(
         self,
         s: torch.Tensor,
         safe_mask: torch.Tensor,
         unsafe_mask: torch.Tensor,
-        hs : torch.Tensor,
-        gradh : torch.Tensor,
-        grid_gap: torch.Tensor = None,
-        model: torch.Tensor = None,
-        model_jacobian: torch.Tensor = None,
-        coefficients_hji_boundary_loss: float=0.1,
-        coefficients_hji_descent_loss: float=2,
-        coefficients_hji_inadmissible_loss: float = 2,
-        requires_grad: bool = True,
+        coefficient: float=2,
     ) -> List[Tuple[str, torch.Tensor]]:
 
         loss = []
-      
+
+        hs = self.h(s)
+        gradh = self.jacobian(s)
         
         # curricumlum_learning_factor = max(1 - self.current_epoch / (self.trainer.max_epochs -200), -0.1)
         # positive_mask = torch.logical_and((hs >= -0.2), hs >= curricumlum_learning_factor * self.max_value_function.to(s.device)) 
@@ -816,7 +771,7 @@ class NeuralNetwork(pl.LightningModule):
          
         #####################################################
         
-        baseline = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values.detach() - 0.1
+        baseline = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values.detach() - self.gamma
         
         value_fun_violation = (baseline -  hs) * 1
         
@@ -836,8 +791,6 @@ class NeuralNetwork(pl.LightningModule):
         Lf_V, Lg_V, Ld_V= self.V_lie_derivatives(s, gradh)
 
         u_qp, d_min = self.get_control_vertices(s)
-
-        u_qp = self.nominal_controller(s)
 
         if u_qp is not None:
             control_term = torch.bmm(
@@ -860,13 +813,13 @@ class NeuralNetwork(pl.LightningModule):
                 
         Vdot = Vdot.reshape(hs.shape)
 
-        decent_violation_lin = Vdot + self.clf_lambda * hs - 0.5
+        decent_violation_lin = Vdot + self.clf_lambda * hs - 0.1
 
         # decent_violation_lin = decent_violation_lin[torch.logical_not(unsafe_mask)]
 
         hji_vi_loss, index_min = torch.min(torch.hstack([value_fun_violation, decent_violation_lin]), dim=1)
 
-        hji_vi_loss_term = coefficients_hji_descent_loss * torch.abs(hji_vi_loss)[positive_mask.squeeze(dim=-1)].mean()
+        hji_vi_loss_term = coefficient * torch.abs(hji_vi_loss)[positive_mask.squeeze(dim=-1)].mean()
         # hji_vi_loss_term = coefficients_hji_descent_loss * F.relu(-hji_vi_loss).mean()
      
 
@@ -918,7 +871,7 @@ class NeuralNetwork(pl.LightningModule):
 
         ###################################################
 
-        regulation_loss = 50 * F.relu( hs + 0.1 ) # * torch.sigmoid(- 10 * baseline) 
+        regulation_loss = 50 * F.relu( hs + self.gamma ) # * torch.sigmoid(- 10 * baseline) 
         # regulation_loss_term = regulation_loss[torch.logical_not(unsafe_mask)].mean()
         # regulation_loss = 1 * F.relu( hs -  (hs.detach() - 0.05)) * torch.sigmoid(- 5 * self.hji_vi_boundary_loss_term ) 
         regulation_loss_term = regulation_loss[unsafe_mask].mean()
@@ -1629,11 +1582,11 @@ class NeuralNetwork(pl.LightningModule):
 
     def Dt(self, s, u_vi):
         hs = self.h(s)
-        gradh = self.jacobian(hs, s)
+        gradh = self.jacobian(s)
 
         Lf_h, Lg_h, Ld_V = self.V_lie_derivatives(s, gradh)
         u = u_vi.expand(Lg_h.shape[0], -1)
-        u = self.nominal_controller(s)
+       
         Lg_h_u = Lg_h * u
         dt = Lf_h + Lg_h_u.sum(dim=1, keepdim=True)
         return dt
@@ -1742,49 +1695,46 @@ class NeuralNetwork(pl.LightningModule):
 
 
     def get_control_vertices(self, s):
-
-        assert self.use_h0 == True, "h0 is not defined"
         
         u_qp = None
         d_min = None
 
-        if self.use_h0:
-            if self.dynamic_system.nu != 0:
-                # find the action that maximize the hamiltonian
-                hs_next_list = []
-                for u in self.u_v:
-                    with torch.no_grad():
-                        x_next = self.dynamic_system.step(s, torch.ones(s.shape[0], self.dynamic_system.nu).to(s.device)*u.to(s.device))
-                        hs_next = self.h0(x_next)
-                        hs_next_list.append(hs_next)
+    
+        if self.dynamic_system.nu != 0:
+            # find the action that maximize the hamiltonian
+            hs_next_list = []
+            for u in self.u_v:
+                with torch.no_grad():
+                    x_next = self.dynamic_system.step(s, torch.ones(s.shape[0], self.dynamic_system.nu).to(s.device)*u.to(s.device))
+                    hs_next = self.h0(x_next)
+                    hs_next_list.append(hs_next)
 
-                hs_next = torch.stack(hs_next_list, dim=1)
-                _, index_control = torch.max(hs_next, dim=1, keepdim=True)
+            hs_next = torch.stack(hs_next_list, dim=1)
+            _, index_control = torch.max(hs_next, dim=1, keepdim=True)
 
-                index_control = index_control.squeeze()
-                u_v = torch.cat(self.u_v, dim=0)
-                u_qp = u_v[index_control]
-                u_qp = u_qp.reshape(-1, self.dynamic_system.nu).to(s.device)
-            
+            index_control = index_control.squeeze()
+            u_v = torch.cat(self.u_v, dim=0)
+            u_qp = u_v[index_control]
+            u_qp = u_qp.reshape(-1, self.dynamic_system.nu).to(s.device)
+        
 
-            if self.dynamic_system.nd != 0:
-                # find the disturbance that minimize the hamiltonian
-                hs_next_list = []
-                for d in self.d_v:
-                    with torch.no_grad():
-                        x_next = self.dynamic_system.step(s, d=torch.ones(s.shape[0], self.dynamic_system.nd).to(s.device)*d.to(s.device))
-                        hs_next = self.h0(x_next)
-                        hs_next_list.append(hs_next)
+        if self.dynamic_system.nd != 0:
+            # find the disturbance that minimize the hamiltonian
+            hs_next_list = []
+            for d in self.d_v:
+                with torch.no_grad():
+                    x_next = self.dynamic_system.step(s, d=torch.ones(s.shape[0], self.dynamic_system.nd).to(s.device)*d.to(s.device))
+                    hs_next = self.h0(x_next)
+                    hs_next_list.append(hs_next)
 
-                hs_next = torch.stack(hs_next_list, dim=1)
-                _, index_control = torch.min(hs_next, dim=1, keepdim=True)
+            hs_next = torch.stack(hs_next_list, dim=1)
+            _, index_control = torch.min(hs_next, dim=1, keepdim=True)
 
-                index_control = index_control.squeeze()
-                d_v = torch.cat(self.d_v, dim=0)
-                d_min = d_v[index_control]
-                d_min = d_min.reshape(-1, self.dynamic_system.nd).to(s.device)
-        else:
-            raise f"please load guide function first"
+            index_control = index_control.squeeze()
+            d_v = torch.cat(self.d_v, dim=0)
+            d_min = d_v[index_control]
+            d_min = d_min.reshape(-1, self.dynamic_system.nd).to(s.device)
+    
 
         return u_qp, d_min
             
@@ -1837,28 +1787,21 @@ class NeuralNetwork(pl.LightningModule):
         # Compute the losses
         component_losses = {}
        
-        s_random = s # + torch.mul(grid_gap , torch.rand(s.shape[0], self.dynamic_system.ns, requires_grad=True).to(s.device)) - grid_gap/2
-        
-        hs = self.h(s_random)
-        gradh = self.jacobian(hs, s_random)
-
-       
         if self.train_mode == 0:
          
             component_losses.update(
-                self.boundary_loss(s_random, safe_mask, unsafe_mask, hs, gradh, 
-                coefficient_for_performance_state_loss=100)
+                self.hji_vi_loss(s, safe_mask, unsafe_mask, coefficient=100)
             )
             
 
         if self.train_mode == 1:
-           
+            
             component_losses.update(
-                self.hji_vi_loss(s_random, safe_mask, unsafe_mask, 
-                                hs, gradh, 
-                                coefficients_hji_boundary_loss=self.coefficient_for_performance_loss,
-                                coefficients_hji_descent_loss=self.coefficients_for_descent_loss,
-                                coefficients_hji_inadmissible_loss=self.coefficient_for_inadmissible_state_loss)
+                self.hji_vi_loss(s, safe_mask, unsafe_mask, coefficient=20)
+            )
+
+            component_losses.update(
+                self.cbvf_vi_loss(s, safe_mask, unsafe_mask, coefficient=5)
             )
 
 
@@ -1866,12 +1809,9 @@ class NeuralNetwork(pl.LightningModule):
         if self.train_mode == 2:
             
             component_losses.update(
-                self.hji_vi_loss(s_random, safe_mask, unsafe_mask, 
-                                hs, gradh, 
-                                coefficients_hji_boundary_loss=self.coefficient_for_performance_loss,
-                                coefficients_hji_descent_loss=self.coefficients_for_descent_loss,
-                                coefficients_hji_inadmissible_loss=self.coefficient_for_inadmissible_state_loss)
+                self.hji_vi_loss(s, safe_mask, unsafe_mask, coefficient=20)
             )
+
 
             if (self.current_epoch+1) % self.trainer.reload_dataloaders_every_n_epochs == 0:
                 # copy_h_bound = copy.deepcopy(self.h)
@@ -1889,6 +1829,8 @@ class NeuralNetwork(pl.LightningModule):
                 with torch.no_grad():
                     model = None
                     model_jacobian = None
+                    hs = None
+                    gradh = None
 
                     component_losses.update(
                         self.epsilon_decent_loss(
@@ -1904,11 +1846,11 @@ class NeuralNetwork(pl.LightningModule):
         if self.train_mode == 3:
             
             component_losses.update(
-                self.hji_vi_loss(s_random, safe_mask, unsafe_mask, 
-                                hs, gradh, 
-                                coefficients_hji_boundary_loss=self.coefficient_for_performance_loss,
-                                coefficients_hji_descent_loss=self.coefficients_for_descent_loss,
-                                coefficients_hji_inadmissible_loss=self.coefficient_for_inadmissible_state_loss)
+                self.hji_vi_loss(s, safe_mask, unsafe_mask, coefficient=20)
+            )
+
+            component_losses.update(
+                self.cbvf_vi_loss(s, safe_mask, unsafe_mask, coefficient=5)
             )
 
         # Compute the overall loss by summing up the individual losses
@@ -2027,41 +1969,59 @@ class NeuralNetwork(pl.LightningModule):
             # Log the other losses
             self.log(loss_key + "/train", avg_losses[loss_key], sync_dist=True)
 
+
+        if self.train_mode == 0:
+            self.synchronize_cbf()
            
-        if self.train_mode == 0 and (performance_losses < 1 and safety_losses < 1): # warm up
-            self.trainer.should_stop = True
-            # pass
-        
-
-        if self.train_mode == 1 and (safety_losses < 1e-3 and descent_losses < 1e-2 ):
-            self.trainer.should_stop = True
-
-        if self.train_mode == 2 and ( safety_losses < 1e-2 and descent_losses < 1e-2 ) :
-            # self.trainer.should_stop = True
-            pass
-        
-        if self.train_mode == 1 and (self.current_epoch + 1) % (self.trainer.reload_dataloaders_every_n_epochs ) == 0:
-            self.data_module.augment_dataset()
-            torch.save(self.data_module.s_training, "s_training.pt")
+            if (performance_losses < 1 and safety_losses < 1): # warm up
+                self.trainer.should_stop = True
+                # pass
             
 
-        if (self.train_mode == 2 or self.train_mode == 3 ) and (self.current_epoch + 1) % (self.trainer.reload_dataloaders_every_n_epochs ) == 0:
-            self.data_module.augment_dataset()
-            # torch.save(self.data_module.s_training, "s_training.pt")
-            if self.data_module.verified == 1:
-                print("verified!!!!!!!!!!!")
+        if self.train_mode == 1:
+            
+            if (safety_losses < 1e-3 and descent_losses < 1e-2 ):
                 self.trainer.should_stop = True
-            elif self.data_module.verified == 0:
-                print("reach minimum gap!!!!!!!!!!!")
-                self.trainer.should_stop = True
-            else:
-                pass               
+            if (self.current_epoch + 1) % (self.trainer.reload_dataloaders_every_n_epochs ) == 0:
+                self.data_module.augment_dataset()
+                torch.save(self.data_module.s_training, "s_training.pt")
+
+        if self.train_mode == 2: 
+            if ( safety_losses < 1e-2 and descent_losses < 1e-2 ) :
+                # self.trainer.should_stop = True
+                pass
+            if (self.current_epoch + 1) % (self.trainer.reload_dataloaders_every_n_epochs ) == 0:
+                self.data_module.augment_dataset()
+                # torch.save(self.data_module.s_training, "s_training.pt")
+                if self.data_module.verified == 1:
+                    print("verified!!!!!!!!!!!")
+                    self.trainer.should_stop = True
+                elif self.data_module.verified == 0:
+                    print("reach minimum gap!!!!!!!!!!!")
+                    self.trainer.should_stop = True
+                else:
+                    pass               
+    
+
+        if self.train_mode == 3:
+            if (self.current_epoch + 1) % (self.trainer.reload_dataloaders_every_n_epochs ) == 0:
+                self.data_module.augment_dataset()
+                # torch.save(self.data_module.s_training, "s_training.pt")
+                if self.data_module.verified == 1:
+                    print("verified!!!!!!!!!!!")
+                    self.trainer.should_stop = True
+                elif self.data_module.verified == 0:
+                    print("reach minimum gap!!!!!!!!!!!")
+                    self.trainer.should_stop = True
+                else:
+                    pass               
         
         print(f"current learning rate is {self.trainer.optimizers[0].param_groups[0]['lr']}")
 
     def on_train_end(self) -> None:
 
-        torch.save(self.training_record_dict, "training_record_dict.pt")
+        # torch.save(self.training_record_dict, "training_record_dict.pt")
+        
 
         return super().on_train_end()
 
@@ -2077,7 +2037,7 @@ class NeuralNetwork(pl.LightningModule):
         
         # record shape_h
         h_x = self.h(x)
-        gradh = self.jacobian(h_x, x)
+        gradh = self.jacobian(x)
         
         
         batch_dict["shape_h"]["state"] = x
@@ -2147,7 +2107,7 @@ class NeuralNetwork(pl.LightningModule):
 
 
     def configure_optimizers(self):
-        clbf_params = list(self.h.parameters()) # list(self.g.parameters())
+        clbf_params = list(self.h.parameters()) + list(self.h0.parameters())
         clbf_opt = torch.optim.SGD(
             clbf_params,
             lr=self.learning_rate,
