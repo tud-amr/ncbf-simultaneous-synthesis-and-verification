@@ -447,7 +447,7 @@ class NeuralNetwork(pl.LightningModule):
 
         with torch.no_grad():
             x_next = self.dynamic_system.step(s, u=u_max, d=d_min)
-            hs_next = self.h0(x_next)  + self.clf_lambda * self.dynamic_system.dt * hs 
+            hs_next = self.h0(x_next)  +  (self.current_epoch / 200) * self.clf_lambda * self.dynamic_system.dt * hs 
         
         gamma = 0.999
         hs_bar = (1- gamma) * baseline + gamma * torch.min(baseline, hs_next )
