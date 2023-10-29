@@ -204,7 +204,7 @@ plt.scatter(X_admissible_area, Y_admissible_area, s=1, c='#B2EAAB')
 
 
 plt.scatter(x_ncbf, y_ncbf, s=10, c='#3171AD')
-plt.scatter(X_descent_ncbf, Y_descent_ncbf, s=10, c='#C66526')
+# plt.scatter(X_descent_ncbf, Y_descent_ncbf, s=10, c='#C66526')
 
 
 X = inadmissible_boundary_state_ncbf[:, x_index].detach().cpu().numpy()

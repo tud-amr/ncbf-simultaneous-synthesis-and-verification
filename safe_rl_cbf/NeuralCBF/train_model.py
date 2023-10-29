@@ -23,11 +23,11 @@ def extract_number(f):
 
 ########################### hyperparameters #############################
 
-train_mode = 2
+train_mode = 0
 system = point_robot
-default_root_dir = "logs/CBF_logs/inverted_pendulum_28_Oct_morning_point/"
-checkpoint_dir = "logs/CBF_logs/inverted_pendulum_27_Oct_night_point/lightning_logs/version_9/checkpoints/epoch=2-step=16.ckpt"
-grid_gap = torch.Tensor([0.2, 0.2, 0.2, 0.2])  
+default_root_dir = "logs/CBF_logs/test/"
+checkpoint_dir = "logs/CBF_logs/IP_2_1/lightning_logs/version_1/checkpoints/epoch=67-step=5576.ckpt"
+grid_gap = torch.Tensor([0.2, 0.2])  
 
 
 ########################## start training ###############################
@@ -56,7 +56,7 @@ if train_mode==0:
         default_root_dir=default_root_dir,
         reload_dataloaders_every_n_epochs=15,
         accumulate_grad_batches=12,
-        # gradient_clip_val=0.5
+        # gradient_clip_val=1
         )
 
     torch.autograd.set_detect_anomaly(True)
@@ -64,18 +64,18 @@ if train_mode==0:
 
 elif train_mode==1:
         
-    data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=1024, training_points_num=int(1e4), train_mode=train_mode)
+    data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=1024, training_points_num=int(1e6), train_mode=train_mode)
 
     # NN0 =  NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=train_mode)
-    NN = NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=train_mode)
-    # NN = NeuralNetwork(dynamic_system=system, data_module=data_module, train_mode=train_mode)
+    NN = NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=train_mode, primal_learning_rate=5e-4)
+    # NN = NeuralNetwork(dynamic_system=system, data_module=data_module, train_mode=train_mode, primal_learning_rate=1e-3)
 
     # NN.set_previous_cbf(NN0.h)
 
     trainer = pl.Trainer(
         accelerator = "gpu",
         devices = 1,
-        max_epochs=400,
+        max_epochs=200,
         # callbacks=[ EarlyStopping(monitor="Total_loss/train", mode="min", check_on_train_epoch_end=True, strict=False, patience=20, stopping_threshold=1e-3) ], 
         # callbacks=[StochasticWeightAveraging(swa_lrs=1e-2)],
         default_root_dir=default_root_dir,
@@ -92,14 +92,14 @@ elif train_mode==2:
     data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=1024, training_points_num=int(1e5), train_mode=1, training_grid_gap=None)
 
     # NN0 =  NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=1)
-    NN = NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=1)
+    NN = NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=1, parimal_learning_rate=2e-5)
    
     # NN.set_previous_cbf(NN0.h)
 
     trainer = pl.Trainer(
         accelerator = "gpu",
         devices = 1,
-        max_epochs=20,
+        max_epochs=5,
         # callbacks=[ EarlyStopping(monitor="Total_loss/train", mode="min", check_on_train_epoch_end=True, strict=False, patience=20, stopping_threshold=1e-3) ], 
         # callbacks=[StochasticWeightAveraging(swa_lrs=1e-2)],
         default_root_dir=default_root_dir,
@@ -111,13 +111,14 @@ elif train_mode==2:
     torch.autograd.set_detect_anomaly(True)
     # trainer.fit(NN)
     
+    current_learning_rate = NN.learning_rate
     del NN, trainer
     
     verification_time = 0
     training_start_time = time.time()
 
     for i in range(20):
-
+        print(f"the iteration {i} of verification")
         verification_start_time = time.time()
         
         data_module.train_mode = 2
@@ -154,12 +155,14 @@ elif train_mode==2:
 
         print(f"data_module.verified = {data_module.verified}")
         print(f"augment_data.shape = {data_module.augment_data.shape}")
-        torch.save(data_module.augment_data, "s_training.pt")
+        # torch.save(data_module.augment_data, "s_training.pt")
        
         verification_time += time.time() - verification_start_time
         counter_examples_num = data_module.augment_data.shape[0]
 
         if data_module.verified == 1:
+            print(f"Verification time: {verification_time}")
+            print(f"counter_examples_num: {counter_examples_num}")
             break
         
         del NN, trainer
@@ -167,6 +170,8 @@ elif train_mode==2:
         data_module.train_mode = 1
         data_module.training_grid_gap = None
         data_module.augment_dataset()
+        num_of_augment_data = data_module.augment_data.shape[0]
+        data_module.training_points_num = max( int(num_of_augment_data * 0.75), int(1e5) )
 
         log_dir = default_root_dir + "/lightning_logs"
         version_list = os.listdir(log_dir)
@@ -176,7 +181,7 @@ elif train_mode==2:
         latest_checkpoint = checkpoint_folder_dir + "/" + checkpoint_name 
 
         # NN0 =  NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=1)
-        NN = NeuralNetwork.load_from_checkpoint(latest_checkpoint,dynamic_system=system, data_module=data_module, train_mode=1)
+        NN = NeuralNetwork.load_from_checkpoint(latest_checkpoint,dynamic_system=system, data_module=data_module, train_mode=1, primal_learning_rate=current_learning_rate)
     
         # NN.set_previous_cbf(NN0.h)
 
@@ -194,6 +199,8 @@ elif train_mode==2:
 
         torch.autograd.set_detect_anomaly(True)
         trainer.fit(NN)
+
+        current_learning_rate = NN.learning_rate
 
 elif train_mode==3:
 

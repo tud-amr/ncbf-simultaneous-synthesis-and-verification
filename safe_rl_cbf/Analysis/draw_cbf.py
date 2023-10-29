@@ -119,6 +119,9 @@ def draw_cbf(system):
 
     ############################### plot descent violation ##############################
 
+    X_unsafe_violation = s_unsafe_violation[:, x_index].detach().cpu().numpy()
+    Y_unsafe_violation = s_unsafe_violation[:, y_index].detach().cpu().numpy()
+
     X_descent = descent_violation[:, x_index].detach().cpu().numpy()
     Y_descent = descent_violation[:, y_index].detach().cpu().numpy()
 
@@ -127,8 +130,10 @@ def draw_cbf(system):
     plt.figure()
 
     plt.scatter(x, y, s=1, c='b')
-    plt.scatter(X_descent, Y_descent, s=1, c='r')
     plt.scatter(X_in, Y_in, s=1, c='y')
+    plt.scatter(X_descent, Y_descent, s=1, c='r')
+    plt.scatter(X_unsafe_violation, Y_unsafe_violation, s=1, c='r')
+    
 
 
     plt.xlabel(r"$x$")
@@ -138,6 +143,9 @@ def draw_cbf(system):
     plt.title("shape of 0-superlevel set")
 
     plt.savefig("logs/test_fig/descent_violation.png")
+
+
+
 
     ############################### plot training points ##############################
     # s_training = torch.load("s_training.pt")

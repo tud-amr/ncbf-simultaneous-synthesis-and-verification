@@ -35,97 +35,17 @@ class TrainingDataModule(pl.LightningDataModule):
         self.verified = -1
         self.augment_data = torch.zeros(1, self.system.ns)
         self.maximum_augment_data_num = int(5e6)
-        # self.initalize_data()
+       
         self.model = None
         self.SMT_verification_time = 0
         self.SMT_CE_num = 0
-        self.new_tree = None
+        self.new_tree = dict()
 
-    def initalize_data(self):
-        domain_lower_bd, domain_upper_bd = self.system.domain_limits
-        domain_bd_gap = domain_upper_bd - domain_lower_bd
-        
-        s = torch.rand(self.training_points_num, self.system.ns) * domain_bd_gap + domain_lower_bd
-
-        # generate training data
-        s_samples = s
-       
-
-        # split into training and validation
-        random_indices = torch.randperm(s_samples.shape[0])
-        val_pts = int(s_samples.shape[0] * self.val_split)
-        validation_indices = random_indices[:val_pts]
-        training_indices = random_indices[val_pts:]
-        
-        # store the data
-        self.s_training = s_samples[training_indices]
-        
-        
-        self.s_validation = s_samples[validation_indices]
-        
-        
-        # generate other information
-        self.safe_mask_training = self.system.safe_mask(self.s_training)  # self.s_training.norm(dim=-1) <= 0.6
-        self.unsafe_mask_training = self.system.unsafe_mask(self.s_training)
-
-        self.safe_mask_validation =  self.system.safe_mask(self.s_validation) # self.s_validation.norm(dim=-1) <= 0.6
-        self.unsafe_mask_validation = self.system.unsafe_mask(self.s_validation)
-        
-        # generate testing data
-        s_test_grid_list = []
-       
-        for i in range(self.system.ns):
-            s_i_grid_test = torch.arange(domain_lower_bd[i], domain_upper_bd[i], self.test_grid_gap)
-            s_test_grid_list.append(s_i_grid_test.float())
-        
-        mesh_grids_test = torch.meshgrid(s_test_grid_list)
-        unsqueez_mesh_grid_test = [ torch.unsqueeze(mesh_grid, dim=0) for mesh_grid in mesh_grids_test ]
-        mesh_grids_test = torch.vstack(unsqueez_mesh_grid_test)
-        data_points_test = torch.flatten(mesh_grids_test, start_dim=1)
-        test_sample = data_points_test.T
-        self.s_testing = test_sample
-
-        self.safe_mask_testing =  self.system.safe_mask(self.s_testing) # self.s_testing.norm(dim=-1) <= 0.6
-        self.unsafe_mask_testing = self.system.unsafe_mask(self.s_testing)
-        
-        print("Full dataset:")
-        print(f"\t{self.s_training.shape[0]} training")
-        print(f"\t{self.s_validation.shape[0]} validation")
-        print("\t----------------------")
-
-        print(f"\t{self.safe_mask_training.sum()} safe points")
-        print(f"\t({self.safe_mask_validation.sum()} val)")
-        print(f"\t{self.unsafe_mask_training.sum()} unsafe points")
-        print(f"\t({self.unsafe_mask_validation.sum()} val)")
-        print("\t----------------------")
-        print(f"\t{self.s_testing.shape[0]} testing")
-
-        # # Turn these into tensor datasets
-        # self.training_data = TensorDataset(
-        #     self.s_training,
-        #     self.safe_mask_training,
-        #     self.unsafe_mask_training,
-        #     self.grid_gap_training
-        # )
-        # self.validation_data = TensorDataset(
-        #     self.s_validation,
-        #     self.safe_mask_validation,
-        #     self.unsafe_mask_validation,
-        #     self.grid_gap_validation
-        #     )
-        # self.testing_data = TensorDataset(
-        #     self.s_testing,
-        #     self.safe_mask_testing,
-        #     self.unsafe_mask_testing,
-        #     self.grid_gap_testing
-        #     )
+    def expand_node(self, data):
     
-
-    def expand_leave(self, leave_node):
-    
-        leave_node_id = leave_node.identifier
-        leave_node_s = leave_node.data[0]
-        leave_node_grid_gap = leave_node.data[1]
+        leave_node_id = self.uniname_of_data(data)
+        leave_node_s = data[0]
+        leave_node_grid_gap = data[1]
         not_reach_minimum_gap = False
         if torch.max(leave_node_grid_gap) > self.minimum_grid_gap:
             not_reach_minimum_gap = True
@@ -140,9 +60,15 @@ class TrainingDataModule(pl.LightningDataModule):
                 new_grid_gap = leave_node_grid_gap / 2
                 satisfy_constraint = False
                 new_data = [new_s, new_grid_gap, satisfy_constraint]
-                self.new_tree.create_node(f"{self.new_tree.size()}", identifier=self.uniname_of_data(new_data), data=new_data, parent=leave_node_id)
+                self.new_tree[self.uniname_of_data(new_data)] = new_data
+
+            self.delete_node(data)
 
         return not_reach_minimum_gap
+
+    def delete_node(self, data):
+        leave_node_id = self.uniname_of_data(data)
+        self.new_tree.pop(leave_node_id)
 
 
     def get_minimum_grid_gap(self):
@@ -249,17 +175,10 @@ class TrainingDataModule(pl.LightningDataModule):
             domain_lower_bd, domain_upper_bd = self.system.domain_limits
             domain_bd_gap = domain_upper_bd - domain_lower_bd
             
-            del self.new_tree
-            self.new_tree = Tree()
+            self.new_tree.clear()
+            self.augment_data = torch.zeros(1, self.system.ns)
 
-            root_s = (domain_lower_bd+ domain_upper_bd )/2
-            root_s = root_s.reshape(1, -1)
-            root_grid_gap = domain_bd_gap.reshape(1, -1)
-            satisfy_constraint = True
-            root_data = [root_s, root_grid_gap, satisfy_constraint]
-
-            self.new_tree.create_node(f"{self.new_tree.size()}", identifier=self.uniname_of_data(root_data), data=root_data)  # root node
-
+            
             s_train_grid_list = []
             sample_data = []
             sample_data_grid_gap = []
@@ -280,14 +199,16 @@ class TrainingDataModule(pl.LightningDataModule):
                 grid_gap = self.training_grid_gap.reshape(1, -1)
                 satisfy_constraint = True
                 data = [s, grid_gap, satisfy_constraint]
-                self.new_tree.create_node(f"{self.new_tree.size()}", identifier=self.uniname_of_data(data), data=data, parent=self.new_tree.root)
+                
+                self.new_tree[self.uniname_of_data(data)] = data
+                # self.new_tree.create_node(f"{self.new_tree.size()}", identifier=self.uniname_of_data(data), data=data, parent=self.new_tree.root)
                 
                 sample_data.append(s)
                 sample_data_grid_gap.append(grid_gap)
 
             # while( self.get_minimum_grid_gap() > self.training_grid_gap[0]): 
             #     for leave_node in self.new_tree.leaves():
-            #         self.expand_leave(leave_node)
+            #         self.expand_node(leave_node)
 
                
             # generate training data
@@ -381,12 +302,13 @@ class TrainingDataModule(pl.LightningDataModule):
             test_flag = True
             reach_minimum_gap = True
 
-            for leave_node in self.new_tree.leaves():
-                if leave_node.data[2] == False:
-                    if self.expand_leave(leave_node):
+            for id, data in self.new_tree.copy().items():
+                if data[2] == False:
+                    if self.expand_node(data):
                         reach_minimum_gap = False
                     test_flag = False
-            
+                else:
+                    self.delete_node(data= data)
             
             if reach_minimum_gap:
                 print("all hyperrectangles reach the minimum grid gap")
@@ -398,10 +320,10 @@ class TrainingDataModule(pl.LightningDataModule):
                 print("all hyperrectangles satisfy the constraint")
                 self.verified = 1
 
-            for leave_node in self.new_tree.leaves():
-                if leave_node.data[2] == False:
-                    sample_data.append(leave_node.data[0])
-                    sample_data_grid_gap.append(leave_node.data[1])
+            for id, data in self.new_tree.items():
+                if data[2] == False:
+                    sample_data.append(data[0])
+                    sample_data_grid_gap.append(data[1])
 
             try:
                 s_samples = torch.cat(sample_data, dim=0)

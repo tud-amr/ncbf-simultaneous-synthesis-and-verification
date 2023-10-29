@@ -13,9 +13,9 @@ from safe_rl_cbf.Analysis.draw_cbf import draw_cbf
 
 ############################# hyperparameters #############################
 
-system = point_robot
-checkpoint_path = "logs/CBF_logs/inverted_pendulum_27_Oct_night_point/lightning_logs/version_9/checkpoints/epoch=2-step=16.ckpt"
-data_module = TestingDataModule(system=system, test_batch_size=1024, test_points_num=int(1e3), test_index={0: None, 1: None, 2: 0.4, 3: 0.2})
+system = inverted_pendulum_1
+checkpoint_path = "logs/CBF_logs/IP_2_1/lightning_logs/version_41/checkpoints/epoch=2-step=27.ckpt"
+data_module = TestingDataModule(system=system, test_batch_size=1024, test_points_num=int(1e3), test_index={0: None, 1: None})
 
 
 
@@ -26,7 +26,7 @@ print(f"Using {device} device")
 
 NN = NeuralNetwork.load_from_checkpoint(checkpoint_path, dynamic_system=system, data_module=data_module)
 NN.to(device)
-
+# NN.synchronize_cbf()
 trainer = pl.Trainer(accelerator = "gpu",
     devices = 1,
     max_epochs=1,)

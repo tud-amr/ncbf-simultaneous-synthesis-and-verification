@@ -29,7 +29,7 @@ inadmissible_boundary_state = inadmissible_boundary_state.detach().cpu().numpy()
 
 
 system = point_robot
-checkpoint_path = "logs/CBF_logs/point_robot_new_2/lightning_logs/version_21/checkpoints/epoch=4-step=20.ckpt"
+checkpoint_path = "logs/CBF_logs/point_robot_28_Oct_morning/lightning_logs/version_8/checkpoints/epoch=3-step=159.ckpt"
 data_module = TestingDataModule(system=system, test_batch_size=1024, test_points_num=int(1e3), test_index={0: None, 1: None, 2: 0.2, 3:0.2})
 
 
@@ -58,7 +58,7 @@ for i in range(X.shape[0]):
         hs = NN.h(s).detach().cpu().numpy()
         Z[i, j] = hs
 
-        if abs(hs) < 0.03:
+        if hs < 0.06 and hs > 0.03:
             x_control_invariant.append(X[i, j])
             y_control_invariant.append(Y[i, j])
 
