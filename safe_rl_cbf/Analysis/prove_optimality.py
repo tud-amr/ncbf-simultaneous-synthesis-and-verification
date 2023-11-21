@@ -157,8 +157,8 @@ plt.scatter(LST_x, LST_y, s=1, c='#F0B2E1')
 # contours2 = plt.contour(hVS0_XData, hVS0_YData, hVS0_ZData, levels=[0], colors='grey', linewidth=5)
 
 
-plt.scatter(x_ncbf, y_ncbf, s=10, c='#3171AD')
-plt.scatter(x_neural_clbf, y_neural_clbf, s=10, c='#EAE159')
+plt.scatter(x_ncbf, y_ncbf, s=1, c='#3171AD')
+plt.scatter(x_neural_clbf, y_neural_clbf, s=1, c='#EAE159')
 
 X = inadmissible_boundary_state_ncbf[:, x_index].detach().cpu().numpy()
 Y = inadmissible_boundary_state_ncbf[:, y_index].detach().cpu().numpy()

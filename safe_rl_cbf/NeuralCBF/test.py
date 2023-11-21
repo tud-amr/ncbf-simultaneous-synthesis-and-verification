@@ -17,7 +17,7 @@ print(f"Using {device} device")
 
 ########################### hyperparameters #############################
 
-train_mode = 2
+train_mode = 1
 system = inverted_pendulum_1
 default_root_dir = "./logs/CBF_logs/inverted_pendulum_1"
 checkpoint_dir = "logs/CBF_logs/inverted_pendulum_1/lightning_logs/version_8/checkpoints/epoch=199-step=2436.ckpt"
@@ -26,14 +26,14 @@ grid_gap = torch.Tensor([0.2, 0.2])
 
 ########################################################
 
-data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=3, training_points_num=int(1e6), training_grid_gap=grid_gap, train_mode=train_mode)
+data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=1024, training_points_num=int(1e6), train_mode=train_mode)
 data_module.prepare_data()
 data_module.set_dataset()
 
-NN = NeuralNetwork.load_from_checkpoint(checkpoint_dir, dynamic_system=system, data_module=data_module, train_mode=train_mode)
-NN0 = NeuralNetwork.load_from_checkpoint(checkpoint_dir, dynamic_system=system, data_module=data_module, train_mode=train_mode)
-# NN = NeuralNetwork(dynamic_system=inverted_pendulum_1, data_module=data_module, require_grad_descent_loss=True, fine_tune=False)
-NN.set_previous_cbf(NN0.h)
+# NN = NeuralNetwork.load_from_checkpoint(checkpoint_dir, dynamic_system=system, data_module=data_module, train_mode=train_mode)
+# NN0 = NeuralNetwork.load_from_checkpoint(checkpoint_dir, dynamic_system=system, data_module=data_module, train_mode=train_mode)
+NN = NeuralNetwork(dynamic_system=inverted_pendulum_1, data_module=data_module, train_mode=train_mode)
+# NN.set_previous_cbf(NN0.h)
 
 batch = next(iter(NN.data_module.train_dataloader()))
 
