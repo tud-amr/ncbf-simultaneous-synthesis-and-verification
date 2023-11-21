@@ -10,26 +10,44 @@ import numpy as np
 from safe_rl_cbf.Dynamics.control_affine_system import ControlAffineSystem
 
 class Car(ControlAffineSystem):
+    # Number of states and controls
+    N_DIMS = 2
+    N_CONTROLS = 1
+    N_DISTURBANCE = 0
+
+    # State indices
+    X = 0
+    X_DOT = 1
+    # Control indices
+    U = 0
+
     def __init__(self, ns=2, nu=1, nd=0, dt=0.01):
         super().__init__(ns, nu, nd, dt)
-        self.K_lqr = torch.tensor([[1.0, 2.23606]]).float()
+        # self.K_lqr = torch.tensor([[1.0, 2.23606]]).float()
 
-        
+        self.c = 0.2
     def f(self, s):
         batch_size = s.shape[0]
-
-        a = torch.tensor([[0, 1],[0, 0]], dtype=torch.float).to(s.device)
-        A = [ a.unsqueeze(dim=0) for i in range(batch_size) ]
-        A = torch.vstack(A)
-
-        result = torch.bmm(A, s.unsqueeze(dim=-1))
+        f = torch.zeros((batch_size, self.ns, 1))
+        f = f.type_as(s)
         
-        return result.squeeze(dim=-1)
+        f[:, Car.X, 0] = s[:, Car.X_DOT]
+        f[:, Car.X_DOT, 0] = - self.c * s[:, Car.X_DOT]
+
+        
+        return f.squeeze(dim=-1)
 
     def g(self, s, m=0.5):
-        old_result =  torch.tensor([0, m], dtype=torch.float).reshape((1,2)).to(s.device) * torch.ones((s.shape[0], 2 ), dtype=torch.float).to(s.device)
-        result =  torch.tensor([0, m], dtype=torch.float).reshape((self.ns, self.nu)).unsqueeze(dim=0).to(s.device) * torch.ones((s.shape[0], self.ns, self.nu), dtype=torch.float).to(s.device)
-        return result
+        
+        batch_size = s.shape[0]
+        g = torch.zeros((batch_size, self.ns, self.nu))
+        g = g.type_as(s)
+
+
+        # Effect on theta dot
+        g[:, Car.X_DOT, Car.U] = 1.0 
+        
+        return g
     
     def d(self, s):
         return torch.zeros((s.shape[0], self.ns, self.nd), dtype=torch.float).to(s.device)

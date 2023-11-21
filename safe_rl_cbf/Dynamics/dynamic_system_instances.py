@@ -16,18 +16,17 @@ import torch
 ####################### create an one-D car object ######################
 car1 = Car(ns=2, nu=1)
 
-domain_lower_bd = torch.Tensor([-2, -2]).float()
+domain_lower_bd = torch.Tensor([5, 2]).float()
 domain_upper_bd = -domain_lower_bd
 
 control_lower_bd =torch.Tensor([-1]).float()
 control_upper_bd = -control_lower_bd
     
 def rou(s: torch.Tensor) -> torch.Tensor:
-    rou_1 = torch.unsqueeze(s[:, 0] + 1, dim=1)
-    rou_2 = torch.unsqueeze( - s[:, 0] + 1, dim=1)
-    rou_3 = torch.unsqueeze(s[:, 1] + 1, dim=1)
-    rou_4 = torch.unsqueeze( -s[:, 1] + 1, dim=1)
-    return torch.hstack( (rou_1, rou_2, rou_3, rou_4) ) 
+    rou_1 = torch.unsqueeze(s[:, 0] + 5, dim=1)
+    rou_2 = torch.unsqueeze( - s[:, 0] + 5, dim=1)
+    
+    return torch.hstack( (rou_1, rou_2) ) 
 
 def rou_n(s: torch.Tensor) -> torch.Tensor:
     s_norm = torch.norm(s, dim=1).unsqueeze(dim=-1)

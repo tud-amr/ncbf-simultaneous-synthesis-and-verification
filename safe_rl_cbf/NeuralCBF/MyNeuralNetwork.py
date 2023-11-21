@@ -94,23 +94,23 @@ class NeuralNetwork(pl.LightningModule):
         #         nn.Linear(256,1)
         #     )
 
-        self.h = nn.Sequential(
-                nn.Linear(self.dynamic_system.ns, 256),
-                nn.Tanh(),
-                nn.Linear(256, 256),
-                nn.Tanh(),
-                nn.Linear(256, 256),
-                nn.Tanh(),
-                nn.Linear(256, 1)
-            )
-
         # self.h = nn.Sequential(
-        #         nn.Linear(self.dynamic_system.ns, 32),
+        #         nn.Linear(self.dynamic_system.ns, 256),
         #         nn.Tanh(),
-        #         nn.Linear(32, 32),
+        #         nn.Linear(256, 256),
         #         nn.Tanh(),
-        #         nn.Linear(32, 1)
+        #         nn.Linear(256, 256),
+        #         nn.Tanh(),
+        #         nn.Linear(256, 1)
         #     )
+
+        self.h = nn.Sequential(
+                nn.Linear(self.dynamic_system.ns, 32),
+                nn.Tanh(),
+                nn.Linear(32, 32),
+                nn.Tanh(),
+                nn.Linear(32, 1)
+            )
         
 
         # self.h = Transformer(self.dynamic_system.ns, 160)
@@ -447,13 +447,13 @@ class NeuralNetwork(pl.LightningModule):
 
         with torch.no_grad():
             x_next = self.dynamic_system.step(s, u=u_max, d=d_min)
-            hs_next = self.h0(x_next)  +  (self.current_epoch / 200) * self.clf_lambda * self.dynamic_system.dt * hs 
+            hs_next = self.h0(x_next)  +  self.clf_lambda * self.dynamic_system.dt * hs 
         
         gamma = 0.999
         hs_bar = (1- gamma) * baseline + gamma * torch.min(baseline, hs_next )
 
         safe_violation = coefficient * torch.abs(  hs_bar - hs )
-        safe_hs_term =  safe_violation[safe_mask].mean()
+        safe_hs_term =  safe_violation.mean()
         if not torch.isnan(safe_hs_term):
             loss.append(("safe_region_term", safe_hs_term))
 

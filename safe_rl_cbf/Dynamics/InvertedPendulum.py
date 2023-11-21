@@ -77,7 +77,7 @@ class InvertedPendulum(ControlAffineSystem):
         return f.squeeze(dim=-1)
     
     
-    def g(self, x: torch.Tensor) -> torch.Tensor:
+    def g(self, s: torch.Tensor) -> torch.Tensor:
         """
         Return the control-independent part of the control-affine dynamics.
 
@@ -89,9 +89,9 @@ class InvertedPendulum(ControlAffineSystem):
             g: bs x self.n_dims x self.n_controls tensor
         """
         # Extract batch size and set up a tensor for holding the result
-        batch_size = x.shape[0]
+        batch_size = s.shape[0]
         g = torch.zeros((batch_size, self.ns, self.nu))
-        g = g.type_as(x)
+        g = g.type_as(s)
 
 
         # Effect on theta dot
