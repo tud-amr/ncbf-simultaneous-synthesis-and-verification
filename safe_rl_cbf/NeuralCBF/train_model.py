@@ -23,11 +23,11 @@ def extract_number(f):
 
 ########################### hyperparameters #############################
 
-train_mode = 0
+train_mode = 2
 system = point_robot
-default_root_dir = "logs/CBF_logs/test/"
-checkpoint_dir = "logs/CBF_logs/IP_2_1/lightning_logs/version_1/checkpoints/epoch=67-step=5576.ckpt"
-grid_gap = torch.Tensor([0.2, 0.2])  
+default_root_dir = "logs/CBF_logs/PR_2_Nov/"
+checkpoint_dir = "logs/CBF_logs/PR_2_Nov/lightning_logs/version_0/checkpoints/epoch=199-step=32600.ckpt"
+grid_gap = torch.Tensor([0.2, 0.2, 0.2, 0.2])  
 
 
 ########################## start training ###############################
@@ -38,7 +38,7 @@ print('Using {} device'.format(device))
 # checkpoint_callback = ModelCheckpoint(dirpath=default_root_dir, save_top_k=1, monitor="Total_loss/train")
 if train_mode==0:
 
-    data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=1024, training_points_num=int(1e6), train_mode=train_mode)
+    data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=1024, training_points_num=int(2e6), train_mode=train_mode)
 
     NN = NeuralNetwork(dynamic_system=system, data_module=data_module, train_mode=train_mode)
     # NN0 =  NeuralNetwork.load_from_checkpoint("logs/CBF_logs/dubins_car_acc/lightning_logs/version_1/checkpoints/epoch=86-step=14181.ckpt",dynamic_system=system, data_module=data_module, require_grad_descent_loss=True, primal_learning_rate=8e-4, fine_tune=fine_tune)
@@ -64,11 +64,11 @@ if train_mode==0:
 
 elif train_mode==1:
         
-    data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=1024, training_points_num=int(1e6), train_mode=train_mode)
+    data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=1024, training_points_num=int(1e5), train_mode=train_mode)
 
     # NN0 =  NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=train_mode)
-    NN = NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=train_mode, primal_learning_rate=5e-4)
-    # NN = NeuralNetwork(dynamic_system=system, data_module=data_module, train_mode=train_mode, primal_learning_rate=1e-3)
+    # NN = NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=train_mode, primal_learning_rate=5e-4)
+    NN = NeuralNetwork(dynamic_system=system, data_module=data_module, train_mode=train_mode, primal_learning_rate=1e-3)
 
     # NN.set_previous_cbf(NN0.h)
 
@@ -89,7 +89,7 @@ elif train_mode==1:
     
 elif train_mode==2:
      
-    data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=1024, training_points_num=int(1e5), train_mode=1, training_grid_gap=None)
+    data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=256, training_points_num=int(1e6), train_mode=1, training_grid_gap=None)
 
     # NN0 =  NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=1)
     NN = NeuralNetwork.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module, train_mode=1, parimal_learning_rate=2e-5)
@@ -104,12 +104,12 @@ elif train_mode==2:
         # callbacks=[StochasticWeightAveraging(swa_lrs=1e-2)],
         default_root_dir=default_root_dir,
         reload_dataloaders_every_n_epochs=1000,
-        accumulate_grad_batches=12,
+        accumulate_grad_batches=24,
         # gradient_clip_val=0.5
         )
 
     torch.autograd.set_detect_anomaly(True)
-    # trainer.fit(NN)
+    trainer.fit(NN)
     
     current_learning_rate = NN.learning_rate
     del NN, trainer
@@ -171,7 +171,7 @@ elif train_mode==2:
         data_module.training_grid_gap = None
         data_module.augment_dataset()
         num_of_augment_data = data_module.augment_data.shape[0]
-        data_module.training_points_num = max( int(num_of_augment_data * 0.75), int(1e5) )
+        
 
         log_dir = default_root_dir + "/lightning_logs"
         version_list = os.listdir(log_dir)
@@ -193,7 +193,7 @@ elif train_mode==2:
             # callbacks=[StochasticWeightAveraging(swa_lrs=1e-2)],
             default_root_dir=default_root_dir,
             reload_dataloaders_every_n_epochs=1000,
-            accumulate_grad_batches=12,
+            accumulate_grad_batches=24,
             # gradient_clip_val=0.5
             )
 

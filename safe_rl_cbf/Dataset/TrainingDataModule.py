@@ -10,6 +10,7 @@ from treelib import Tree, Node
 import matplotlib.pyplot as plt
 # from dreal import *
 import timeit 
+import math
 # from safe_rl_cbf.NeuralLC.Functions import *
 
 class TrainingDataModule(pl.LightningDataModule):
@@ -34,7 +35,7 @@ class TrainingDataModule(pl.LightningDataModule):
         self.minimum_grid_gap = 0.05
         self.verified = -1
         self.augment_data = torch.zeros(1, self.system.ns)
-        self.maximum_augment_data_num = int(5e6)
+        self.maximum_augment_data_num = int(7e6)
        
         self.model = None
         self.SMT_verification_time = 0
@@ -283,9 +284,17 @@ class TrainingDataModule(pl.LightningDataModule):
         if self.train_mode == 1:
             domain_lower_bd, domain_upper_bd = self.system.domain_limits
             domain_bd_gap = domain_upper_bd - domain_lower_bd
+            
+            if self.augment_data.shape[0] < 1e5:
+                self.augment_data = self.augment_data.repeat(math.ceil(1e5/0.75/self.augment_data.shape[0]), 1)
 
+          
+
+            self.training_points_num = max( int(self.augment_data.shape[0] * 0.75), int(1e5) )
+            
             s = torch.rand(self.training_points_num, self.system.ns) * domain_bd_gap + domain_lower_bd
-           
+
+            
             if self.augment_data.shape[0] > self.maximum_augment_data_num:
                 self.augment_data = self.augment_data[-self.maximum_augment_data_num:]
 
@@ -313,7 +322,7 @@ class TrainingDataModule(pl.LightningDataModule):
             if reach_minimum_gap:
                 print("all hyperrectangles reach the minimum grid gap")
                 self.verified = 0
-                self.minimum_grid_gap = max(self.minimum_grid_gap * 0.8, 0.005)
+                self.minimum_grid_gap = max(self.minimum_grid_gap * 0.8, 0.03)
                 print("minimum grid gap is updated to be ", self.minimum_grid_gap)
             
             if test_flag:

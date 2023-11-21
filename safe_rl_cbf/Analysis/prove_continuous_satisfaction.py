@@ -148,8 +148,7 @@ plt.scatter(X_inadmissible_area, Y_inadmissible_area, s=1, c='#939393')
 
 X_admissible_area = admissible_area_state_ncbf[:, x_index].detach().cpu().numpy()
 Y_admissible_area = admissible_area_state_ncbf[:, y_index].detach().cpu().numpy()
-plt.scatter(X_admissible_area, Y_admissible_area, s=1, c='#B2EAAB')
-
+plt.scatter(X_admissible_area, Y_admissible_area, s=1.2, c='#B2EAAB')
 
 plt.scatter(x_ncbf_1, y_ncbf_1, s=10, c='#3171AD')
 plt.scatter(X_descent_ncbf_1, Y_descent_ncbf_1, s=10, c='#C66526')
@@ -173,7 +172,7 @@ legend_elements = [
                     Patch(facecolor='#B2EAAB', edgecolor='#B2EAAB',
                         label='Admissible'),
                     Patch(facecolor='#3171AD', edgecolor='#3171AD',
-                        label='Ours'),
+                        label='0 superlevel set'),
                     Patch(facecolor='#C66526', edgecolor='#C66526',
                     label='Violation')
                 ]
@@ -203,13 +202,13 @@ plt.scatter(X_admissible_area, Y_admissible_area, s=1, c='#B2EAAB')
 # contours = plt.contourf(hVS_XData, hVS_YData, hVS_ZData, levels=[-0.1, 0, 1], colors=['w','#a7f790','w'], extend='both')
 
 
-plt.scatter(x_ncbf, y_ncbf, s=10, c='#3171AD')
+plt.scatter(x_ncbf, y_ncbf, s=1, c='#3171AD')
 # plt.scatter(X_descent_ncbf, Y_descent_ncbf, s=10, c='#C66526')
 
 
 X = inadmissible_boundary_state_ncbf[:, x_index].detach().cpu().numpy()
 Y = inadmissible_boundary_state_ncbf[:, y_index].detach().cpu().numpy()
-plt.scatter(X, Y, s=1, c='#939393')
+# plt.scatter(X, Y, s=1, c='#939393')
 
 plt.xlabel(r"$\theta$ (rad)", fontsize="15")
 plt.ylabel(r"$\dot{\theta}$ (rad/s)", fontsize="15")
@@ -227,7 +226,7 @@ legend_elements = [
                     Patch(facecolor='#B2EAAB', edgecolor='#B2EAAB',
                         label='Admissible'),
                     Patch(facecolor='#3171AD', edgecolor='#3171AD',
-                        label='Ours'),
+                        label='0 superlevel set'),
                     Patch(facecolor='#C66526', edgecolor='#C66526',
                     label='Violation')
                 ]
@@ -246,7 +245,7 @@ plt.figure()
 
 X_admissible_area = admissible_area_state_ncbf[:, x_index].detach().cpu().numpy()
 Y_admissible_area = admissible_area_state_ncbf[:, y_index].detach().cpu().numpy()
-plt.scatter(X_admissible_area, Y_admissible_area, s=1, c='#B2EAAB')
+plt.scatter(X_admissible_area, Y_admissible_area, s=1.2, c='#B2EAAB')
 
 
 
@@ -286,7 +285,7 @@ legend_elements = [
                     Patch(facecolor='#B2EAAB', edgecolor='#B2EAAB',
                         label='Admissible'),
                     Patch(facecolor='#3171AD', edgecolor='#3171AD',
-                        label='Ours'),
+                        label='0 superlevel set'),
                     Line2D([], [], color='#000000', marker='.', linestyle='None',
                           markersize=5, label='Counterexamples')
                 ]
