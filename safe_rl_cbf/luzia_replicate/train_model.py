@@ -35,7 +35,7 @@ grid_gap = torch.Tensor([0.2, 0.2])
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print('Using {} device'.format(device))
 
-if not train_mode==2:
+if train_mode==2:
      
     data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=1024, training_points_num=int(1e5), train_mode=1, training_grid_gap=None)
 
