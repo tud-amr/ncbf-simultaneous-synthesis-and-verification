@@ -771,8 +771,8 @@ class NeuralNetwork(pl.LightningModule):
 
         q_min_1 = torch.sum(lb_j_lb_dx, dim=1, keepdim=True) + self.clf_lambda * lb_h
         q_min_2 = torch.sum(ub_j_ub_dx, dim=1, keepdim=True) + self.clf_lambda * lb_h
-        q_min_3 = torch.sum(lb_j_ub_dx, dim=1, keepdim=True) + self.clf_lambda * ub_h
-        q_min_4 = torch.sum(ub_j_lb_dx, dim=1, keepdim=True) + self.clf_lambda * ub_h
+        q_min_3 = torch.sum(lb_j_ub_dx, dim=1, keepdim=True) + self.clf_lambda * lb_h
+        q_min_4 = torch.sum(ub_j_lb_dx, dim=1, keepdim=True) + self.clf_lambda * lb_h
 
         q_min = torch.min(torch.min(q_min_1, q_min_2), torch.min(q_min_3, q_min_4))
         
