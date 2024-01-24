@@ -6,7 +6,6 @@ Drone-2d-custom-gym-env-for-reinforcement-learning
 CBF_logs
 CBF_logs_backup
 backup
-RA_result
 *.pt
 .vscode 
 logs
