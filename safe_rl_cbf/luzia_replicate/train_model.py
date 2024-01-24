@@ -26,7 +26,7 @@ def extract_number(f):
 
 train_mode = 2
 system = inverted_pendulum_1
-default_root_dir = "safe_rl_cbf/luzia_replicate/logs/"
+default_root_dir = "logs/cbf_logs"
 checkpoint_dir = "saved_models/inverted_pendulum_stage_1/checkpoints/epoch=293-step=2646.ckpt"
 grid_gap = torch.Tensor([0.2, 0.2])  
 
