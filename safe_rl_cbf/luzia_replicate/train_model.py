@@ -152,7 +152,7 @@ latest_checkpoint = checkpoint_folder_dir + "/" + checkpoint_name
 
 data_module = TestingDataModule(system=system, test_batch_size=1024, test_points_num=int(1e3), test_index={0: None, 1: None})
 
-############################ load model ###################################
+############################ plot figures ###################################
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using {device} device")
