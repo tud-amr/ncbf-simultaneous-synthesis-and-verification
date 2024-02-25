@@ -33,7 +33,7 @@ import matplotlib.pyplot as plt
 from safe_rl_cbf.Dataset.DataModule import DataModule
 # from ValueFunctionNeuralNetwork import ValueFunctionNeuralNetwork
 from safe_rl_cbf.Dynamics.control_affine_system import ControlAffineSystem
-from safe_rl_cbf.NeuralCBF.Transformer import Transformer
+from safe_rl_cbf.Models.Transformer import Transformer
 
 from safe_rl_cbf.Dynamics.dynamic_system_instances import car1, inverted_pendulum_1
 

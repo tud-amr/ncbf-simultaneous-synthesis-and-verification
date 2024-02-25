@@ -1,5 +1,5 @@
 
-from NeuralCBF.MyNeuralNetwork import *
+from safe_rl_cbf.Models.NeuralCBF import *
 from Dynamics.Car import Car
 from Dataset.DataModule import DataModule
 from Dynamics.dynamic_system_instances import car1

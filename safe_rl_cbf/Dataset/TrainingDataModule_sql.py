@@ -1,47 +1,55 @@
-from safe_rl_cbf.Models.common_header import *
-from safe_rl_cbf.Dataset.DataModule import DataModule   
+from typing import List, Callable, Tuple, Dict, Optional
+
+import torch
+import lightning.pytorch as pl
+from torch.utils.data import TensorDataset, DataLoader
+from safe_rl_cbf.Dynamics.dynamic_system_instances import car1, inverted_pendulum_1, point_robot
 from safe_rl_cbf.Dynamics.control_affine_system import ControlAffineSystem
-<<<<<<< HEAD
+from safe_rl_cbf.Dataset.SqlDataSet import SqlDataSet
 from itertools import product
 from treelib import Tree, Node
 import matplotlib.pyplot as plt
 # from dreal import *
 import timeit 
-import math
 # from safe_rl_cbf.NeuralLC.Functions import *
-=======
->>>>>>> luzia_replicate
 
-class TrainingDataModule(DataModule):
+class TrainingDataModule(pl.LightningDataModule):
     def __init__(
         self,
         system: ControlAffineSystem,
+        val_split: float = 0.1,
         train_batch_size: int = 64,
-        training_points_num: int = 1e5,
-        prefix: str = "",
-        log_dir: str = "logs",
+        training_points_num: int = 100000,
+        training_grid_gap: torch.tensor = None,
+        train_mode: int = 0,
+       
     ):
-        super().__init__(system, train_batch_size, prefix, log_dir)
+        super().__init__()
+        self.system = system
+        self.val_split = val_split
+        self.train_batch_size = train_batch_size
         self.training_points_num = training_points_num
-<<<<<<< HEAD
         self.minimum_training_points_num = 1e5
         self.train_mode = train_mode
         self.training_grid_gap = training_grid_gap
         self.minimum_grid_gap = 0.05
         self.verified = -1
         self.augment_data = torch.zeros(1, self.system.ns)
-        self.maximum_augment_data_num = int(7e6)
-       
+        self.maximum_augment_data_num = int(5e6)
+        # self.initalize_data()
         self.model = None
         self.SMT_verification_time = 0
         self.SMT_CE_num = 0
-        self.new_tree = dict()
+        self.sql_bandwith = 1e5
 
-    def expand_node(self, data):
+        # create sql data base
+        self.sql_database = SqlDataSet(self.system.ns, "training")
+
+    def expand_leave(self, leave_node):
     
-        leave_node_id = self.uniname_of_data(data)
-        leave_node_s = data[0]
-        leave_node_grid_gap = data[1]
+        leave_node_id = leave_node.identifier
+        leave_node_s = leave_node.data[0]
+        leave_node_grid_gap = leave_node.data[1]
         not_reach_minimum_gap = False
         if torch.max(leave_node_grid_gap) > self.minimum_grid_gap:
             not_reach_minimum_gap = True
@@ -56,15 +64,9 @@ class TrainingDataModule(DataModule):
                 new_grid_gap = leave_node_grid_gap / 2
                 satisfy_constraint = False
                 new_data = [new_s, new_grid_gap, satisfy_constraint]
-                self.new_tree[self.uniname_of_data(new_data)] = new_data
-
-            self.delete_node(data)
+                self.new_tree.create_node(f"{self.new_tree.size()}", identifier=self.uniname_of_data(new_data), data=new_data, parent=leave_node_id)
 
         return not_reach_minimum_gap
-
-    def delete_node(self, data):
-        leave_node_id = self.uniname_of_data(data)
-        self.new_tree.pop(leave_node_id)
 
 
     def get_minimum_grid_gap(self):
@@ -82,48 +84,34 @@ class TrainingDataModule(DataModule):
             id = id + str(s[0,i].item())
 
         return id
-=======
 
->>>>>>> luzia_replicate
-        
+    def add_random_data(self, total_num):
+        domain_lower_bd, domain_upper_bd = self.system.domain_limits
+        domain_bd_gap = domain_upper_bd - domain_lower_bd
+
+        while total_num > 0:
+            num = total_num if total_num < self.sql_bandwith else self.sql_bandwith
+            total_num = total_num - num
+
+            s = torch.rand(int(num), self.system.ns) * domain_bd_gap + domain_lower_bd
+            s_gridding_gap = torch.zeros(s.shape[0], self.system.ns)
+            safe_mask_training = self.system.safe_mask(s).reshape(-1,1)
+            unsafe_mask_training = self.system.unsafe_mask(s).reshape(-1,1)
+            satisfied = torch.tensor( [[False]] * s.shape[0] ).reshape(-1,1)
+
+            self.sql_database.insert_p_batch(s, s_gridding_gap, safe_mask_training, unsafe_mask_training, satisfied)
+
+
     def prepare_data(self):
-        """Prepare the data 
-        training_points_num: int, the total number of training points
-        """
+        """Prepare the data """
 
         print("Preparing data........")
-        ns = self.system.ns
+        
+        if self.train_mode == 0:
+            domain_lower_bd, domain_upper_bd = self.system.domain_limits
+            domain_bd_gap = domain_upper_bd - domain_lower_bd
 
-<<<<<<< HEAD
-            s = torch.rand(self.training_points_num, self.system.ns) * domain_bd_gap + domain_lower_bd
-           
-            # generate training data
-            s_samples = s
-            
-            assert self.training_grid_gap is None
-            s_gridding_gap = torch.zeros(s_samples.shape[0], self.system.ns)
-
-
-            # split into training and validation
-            random_indices = torch.randperm(s_samples.shape[0])
-            val_pts = int(s_samples.shape[0] * self.val_split)
-            validation_indices = random_indices[:val_pts]
-            training_indices = random_indices[val_pts:]
-            
-
-
-            # store the training data
-            self.s_training = s_samples[training_indices]
-            self.s_grid_gap_training = s_gridding_gap[training_indices]
-            self.s_validation = s_samples[validation_indices]
-            self.s_grid_gap_validation = s_gridding_gap[validation_indices]
-            
-            # generate other information
-            self.safe_mask_training = self.system.safe_mask(self.s_training)  # self.s_training.norm(dim=-1) <= 0.6
-            self.unsafe_mask_training = self.system.unsafe_mask(self.s_training)
-            
-            self.safe_mask_validation =  self.system.safe_mask(self.s_validation) # self.s_validation.norm(dim=-1) <= 0.6
-            self.unsafe_mask_validation = self.system.unsafe_mask(self.s_validation)
+            self.add_random_data(self.training_points_num)
             
         elif (self.train_mode == 1 or self.train_mode == 3):
             
@@ -173,11 +161,17 @@ class TrainingDataModule(DataModule):
 
             domain_lower_bd, domain_upper_bd = self.system.domain_limits
             domain_bd_gap = domain_upper_bd - domain_lower_bd
-            
-            self.new_tree.clear()
-            self.augment_data = torch.zeros(1, self.system.ns)
 
-            
+            self.new_tree = Tree()
+
+            root_s = (domain_lower_bd+ domain_upper_bd )/2
+            root_s = root_s.reshape(1, -1)
+            root_grid_gap = domain_bd_gap.reshape(1, -1)
+            satisfy_constraint = True
+            root_data = [root_s, root_grid_gap, satisfy_constraint]
+
+            self.new_tree.create_node(f"{self.new_tree.size()}", identifier=self.uniname_of_data(root_data), data=root_data)  # root node
+
             s_train_grid_list = []
             sample_data = []
             sample_data_grid_gap = []
@@ -198,16 +192,14 @@ class TrainingDataModule(DataModule):
                 grid_gap = self.training_grid_gap.reshape(1, -1)
                 satisfy_constraint = True
                 data = [s, grid_gap, satisfy_constraint]
-                
-                self.new_tree[self.uniname_of_data(data)] = data
-                # self.new_tree.create_node(f"{self.new_tree.size()}", identifier=self.uniname_of_data(data), data=data, parent=self.new_tree.root)
+                self.new_tree.create_node(f"{self.new_tree.size()}", identifier=self.uniname_of_data(data), data=data, parent=self.new_tree.root)
                 
                 sample_data.append(s)
                 sample_data_grid_gap.append(grid_gap)
 
             # while( self.get_minimum_grid_gap() > self.training_grid_gap[0]): 
             #     for leave_node in self.new_tree.leaves():
-            #         self.expand_node(leave_node)
+            #         self.expand_leave(leave_node)
 
                
             # generate training data
@@ -234,31 +226,6 @@ class TrainingDataModule(DataModule):
             self.safe_mask_validation =  self.system.safe_mask(self.s_validation) # self.s_validation.norm(dim=-1) <= 0.6
             self.unsafe_mask_validation = self.system.unsafe_mask(self.s_validation)
             
-   
-            
-    def set_dataset(self):
-=======
-        self.add_random_data( self.training_points_num )
->>>>>>> luzia_replicate
-        print("Full dataset:")
-        print("\t----------------------")
-        print(f"\t{len(self.sql_database)} training")
-        
-<<<<<<< HEAD
-
-        # Turn these into tensor datasets
-        self.training_data = TensorDataset(
-            self.s_training,
-            self.safe_mask_training,
-            self.unsafe_mask_training,
-            self.s_grid_gap_training
-        )
-        self.validation_data = TensorDataset(
-            self.s_validation,
-            self.safe_mask_validation,
-            self.unsafe_mask_validation,
-            self.s_grid_gap_validation
-            )
 
     def augment_dataset(self):
         
@@ -279,17 +246,9 @@ class TrainingDataModule(DataModule):
         if self.train_mode == 1:
             domain_lower_bd, domain_upper_bd = self.system.domain_limits
             domain_bd_gap = domain_upper_bd - domain_lower_bd
-            
-            if self.augment_data.shape[0] < 1e5:
-                self.augment_data = self.augment_data.repeat(math.ceil(1e5/0.75/self.augment_data.shape[0]), 1)
 
-          
-
-            self.training_points_num = max( int(self.augment_data.shape[0] * 0.75), int(1e5) )
-            
             s = torch.rand(self.training_points_num, self.system.ns) * domain_bd_gap + domain_lower_bd
-
-            
+           
             if self.augment_data.shape[0] > self.maximum_augment_data_num:
                 self.augment_data = self.augment_data[-self.maximum_augment_data_num:]
 
@@ -306,28 +265,27 @@ class TrainingDataModule(DataModule):
             test_flag = True
             reach_minimum_gap = True
 
-            for id, data in self.new_tree.copy().items():
-                if data[2] == False:
-                    if self.expand_node(data):
+            for leave_node in self.new_tree.leaves():
+                if leave_node.data[2] == False:
+                    if self.expand_leave(leave_node):
                         reach_minimum_gap = False
                     test_flag = False
-                else:
-                    self.delete_node(data= data)
+            
             
             if reach_minimum_gap:
                 print("all hyperrectangles reach the minimum grid gap")
                 self.verified = 0
-                self.minimum_grid_gap = max(self.minimum_grid_gap * 0.8, 0.03)
+                self.minimum_grid_gap = max(self.minimum_grid_gap * 0.8, 0.005)
                 print("minimum grid gap is updated to be ", self.minimum_grid_gap)
             
             if test_flag:
                 print("all hyperrectangles satisfy the constraint")
                 self.verified = 1
 
-            for id, data in self.new_tree.items():
-                if data[2] == False:
-                    sample_data.append(data[0])
-                    sample_data_grid_gap.append(data[1])
+            for leave_node in self.new_tree.leaves():
+                if leave_node.data[2] == False:
+                    sample_data.append(leave_node.data[0])
+                    sample_data_grid_gap.append(leave_node.data[1])
 
             try:
                 s_samples = torch.cat(sample_data, dim=0)
@@ -445,24 +403,23 @@ class TrainingDataModule(DataModule):
     def train_dataloader(self):
         """Make the DataLoader for training data"""
         return DataLoader(
-            self.training_data,
+            self.sql_database,
             batch_size=self.train_batch_size,
-            num_workers=8,
+            num_workers=2,
         )
 
 
-=======
-    def set_training_points_num(self, training_points_num):
-        self.training_points_num = training_points_num
-    
-   
->>>>>>> luzia_replicate
         
 if __name__ == "__main__":
-    from safe_rl_cbf.Dynamics.dynamic_system_instances import point_robot
+    
+    data_module = TrainingDataModule(system=point_robot, training_points_num=10, train_batch_size=5)
 
-    data_module = TrainingDataModule(system=point_robot, prefix="test", train_batch_size=64, training_points_num=1000)
+    data_module.prepare_data()
+    print(len(data_module.sql_database))
 
-    data_module.prepare_data(100)
-
-    data_module.delete()
+    data_loader = data_module.train_dataloader()
+    # iterate data loader
+    for batch in data_loader:
+        s, grid_gap, safe_mask, unsafe_mask, _ = batch
+        print(s.shape)
+        print(grid_gap.shape)

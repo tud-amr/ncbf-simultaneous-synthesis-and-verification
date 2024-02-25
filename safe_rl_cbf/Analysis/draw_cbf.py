@@ -10,17 +10,19 @@ from matplotlib.lines import Line2D
 
 import scipy.io as sio
 
-from safe_rl_cbf.NeuralCBF.MyNeuralNetwork import *
+from safe_rl_cbf.Models.NeuralCBF import *
 from safe_rl_cbf.Dynamics.dynamic_system_instances import car1, inverted_pendulum_1, cart_pole_1, dubins_car, dubins_car_acc, point_robot
 from safe_rl_cbf.Dataset.DataModule import DataModule
 
 
-def draw_cbf(system):
+def draw_cbf(system, log_dir = "logs"):
 
     ############### create folder #################
 
-    if not os.path.exists("logs/test_fig"):
-        os.makedirs("logs/test_fig")
+    if not os.path.exists( os.path.join(log_dir, "test_fig")):
+        os.makedirs(os.path.join(log_dir, "test_fig") )
+
+    save_dir = os.path.join(log_dir, "test_fig")
 
     x_index = 0
     y_index = 1
@@ -28,7 +30,7 @@ def draw_cbf(system):
     ##################### read data #######################
 
 
-    test_results = torch.load("test_results.pt")
+    test_results = torch.load( log_dir + "/test_results.pt")
 
     domain_limit_lb, domain_limit_ub = system.domain_limits
 
@@ -114,7 +116,7 @@ def draw_cbf(system):
     plt.legend(handles=legend_elements, bbox_to_anchor=(1, 1.1),loc='upper right')
 
 
-    plt.savefig("logs/test_fig/shape_of_cbf.png")
+    plt.savefig( os.path.join(save_dir, "shape_of_cbf.png"))
 
 
     ############################### plot descent violation ##############################
@@ -142,49 +144,30 @@ def draw_cbf(system):
     plt.ylim(domain_limit_lb[y_index], domain_limit_ub[y_index])
     plt.title("shape of 0-superlevel set")
 
-    plt.savefig("logs/test_fig/descent_violation.png")
+    plt.savefig( os.path.join(save_dir, "descent_violation.png"))
 
 
 
 
     ############################### plot training points ##############################
-    # s_training = torch.load("s_training.pt")
-   
-    # X = h_shape_s[:, x_index].detach().cpu().numpy()
-    # Y = h_shape_s[:, y_index].detach().cpu().numpy()
-    # H = h_shape_val.squeeze(dim=1).detach().cpu().numpy()
+    s_training = torch.load( os.path.join(log_dir,"s_training.pt") )
 
-    # H_positive_mask = H > 0
-
-
-    # x = X[H_positive_mask]
-    # y = Y[H_positive_mask]
-
-    # plt.figure()
-
-    # # Create contour lines or level curves using matpltlib.pyplt module
-    # contours = plt.contourf(hVS_XData, hVS_YData, hVS_ZData, levels=[-0.1, 0, 1], colors=['w','y','w'], extend='both')
-
-    # contours2 = plt.contour(hVS0_XData, hVS0_YData, hVS0_ZData, levels=[0], colors='grey', linewidth=5)
+    plt.figure()
+    plt.scatter(x, y, s=1, c='b')
+    plt.scatter(X_descent, Y_descent, s=1, c='r')
+    plt.scatter(X_in, Y_in, s=1, c='y')
 
 
-    # plt.scatter(x, y, s=10, c='b')
-
-    # X = inadmissible_boundary_state[:, x_index].detach().cpu().numpy()
-    # Y = inadmissible_boundary_state[:, y_index].detach().cpu().numpy()
-    # # plt.scatter(X, Y, s=2, c='y')
+    plt.scatter(s_training[:,0], s_training[:,1], marker='X', s=10, c='k')
 
 
-    # plt.scatter(s_training[:,0], s_training[:,1], marker='X', s=10, c='k')
+    plt.xlabel(r"$x$")
+    plt.ylabel(r"$y$")
+    plt.xlim(domain_limit_lb[x_index], domain_limit_ub[x_index])
+    plt.ylim(domain_limit_lb[y_index], domain_limit_ub[y_index])
+    plt.title("shape of 0-superlevel set")
 
-
-    # plt.xlabel(r"$x$")
-    # plt.ylabel(r"$y$")
-    # plt.xlim(domain_limit_lb[x_index], domain_limit_ub[x_index])
-    # plt.ylim(domain_limit_lb[y_index], domain_limit_ub[y_index])
-    # plt.title("shape of 0-superlevel set")
-
-    # plt.savefig("logs/test_fig/shape_of_cbf_with_training_points.png")
+    plt.savefig( os.path.join(save_dir,  "shape_of_cbf_with_training_points.png"))
 
 
 ########################## plot contour of h(x) #############################
@@ -197,4 +180,4 @@ def draw_cbf(system):
     plt.xlabel(r"$\theta$")
     plt.ylabel(r"$\dot{\theta}$")
     ax1.set_title("contour of CBF")
-    plt.savefig("logs/test_fig/contour_of_cbf.png")
+    plt.savefig( os.path.join(save_dir, "contour_of_cbf.png"))

@@ -1,6 +1,6 @@
 import torch
 from safe_rl_cbf.Dynamics.dynamic_system_instances import car1, inverted_pendulum_1
-from safe_rl_cbf.NeuralCBF.MyNeuralNetwork import NeuralNetwork
+from safe_rl_cbf.Models.NeuralCBF import NeuralNetwork
 # from ValueFunctionNeuralNetwork import ValueFunctionNeuralNetwork
 from safe_rl_cbf.Dataset.TrainingDataModule import TrainingDataModule
 from treelib import Tree, Node

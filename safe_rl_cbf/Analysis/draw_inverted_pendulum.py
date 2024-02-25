@@ -12,7 +12,7 @@ from matplotlib.lines import Line2D
 
 import scipy.io as sio
 
-from safe_rl_cbf.NeuralCBF.MyNeuralNetwork import *
+from safe_rl_cbf.Models.NeuralCBF import *
 from safe_rl_cbf.Dynamics.dynamic_system_instances import car1, inverted_pendulum_1
 from safe_rl_cbf.Dataset.DataModule import DataModule
 
