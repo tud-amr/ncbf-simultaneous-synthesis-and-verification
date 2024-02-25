@@ -4,7 +4,7 @@ from safe_rl_cbf.RL.InvertedPendulum.MyPendulum import MyPendulumEnv
 from stable_baselines3 import PPO
 
 
-from safe_rl_cbf.NeuralCBF.MyNeuralNetwork import NeuralNetwork
+from safe_rl_cbf.Models.NeuralCBF import NeuralNetwork
 from safe_rl_cbf.Dynamics.dynamic_system_instances import inverted_pendulum_1
 from safe_rl_cbf.Dataset.TrainingDataModule import TrainingDataModule
 
@@ -18,7 +18,7 @@ NN = NN.to(device)
 
 env = MyPendulumEnv("human", g=9.81, with_CBF=False)
 env.set_barrier_function(NN)
-model = PPO.load("logs/stable_baseline_logs_IP_23_Oct/IP_without/run0/ip_without_CBF.zip")
+model = PPO.load("logs/stable_baseline_logs_IP_23_Oct/IP_with/run2/ip_with_CBF.zip")
 
 obs = env.reset()
 while True:

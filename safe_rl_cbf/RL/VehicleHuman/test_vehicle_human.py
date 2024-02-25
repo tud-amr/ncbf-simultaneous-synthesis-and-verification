@@ -3,7 +3,7 @@ from stable_baselines3 import PPO
 import torch
 
 from safe_rl_cbf.RL.VehicleHuman.vehicle_human_env import VehicleHumanEnv
-from safe_rl_cbf.NeuralCBF.MyNeuralNetwork import NeuralNetwork
+from safe_rl_cbf.Models.NeuralCBF import NeuralNetwork
 from safe_rl_cbf.Dynamics.dynamic_system_instances import dubins_car, point_robot, point_robots_dis, two_vehicle_avoidance, vehicle_human
 from safe_rl_cbf.Dataset.TrainingDataModule import TrainingDataModule
 

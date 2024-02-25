@@ -3,7 +3,7 @@ from stable_baselines3 import PPO
 import torch
 
 from safe_rl_cbf.RL.RobotArm.robot_arm_env import RobotArmEnv
-from safe_rl_cbf.NeuralCBF.MyNeuralNetwork import NeuralNetwork
+from safe_rl_cbf.Models.NeuralCBF import NeuralNetwork
 from safe_rl_cbf.Dynamics.dynamic_system_instances import dubins_car, point_robot, robot_arm_2d
 from safe_rl_cbf.Dataset.TrainingDataModule import TrainingDataModule
 

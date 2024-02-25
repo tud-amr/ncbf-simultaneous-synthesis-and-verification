@@ -1,5 +1,5 @@
 
-from safe_rl_cbf.NeuralCBF.MyNeuralNetwork import *
+from safe_rl_cbf.Models.NeuralCBF import *
 from safe_rl_cbf.Dataset.DataModule import DataModule
 from safe_rl_cbf.Dynamics.dynamic_system_instances import inverted_pendulum_1
 import torch

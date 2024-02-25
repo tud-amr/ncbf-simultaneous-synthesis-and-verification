@@ -3,7 +3,7 @@ from stable_baselines3 import PPO
 import torch
 
 from safe_rl_cbf.RL.DubinsCarAcc.dubins_car_acc_env import DubinsCarEnv
-from safe_rl_cbf.NeuralCBF.MyNeuralNetwork import NeuralNetwork
+from safe_rl_cbf.Models.NeuralCBF import NeuralNetwork
 from safe_rl_cbf.Dynamics.dynamic_system_instances import dubins_car_acc
 from safe_rl_cbf.Dataset.TrainingDataModule import TrainingDataModule
 

@@ -4,8 +4,8 @@ from abc import (
     abstractproperty,
 )
 import torch
-from typing import Tuple, Optional, Union
-
+from typing import Tuple, Optional, Union, List
+from itertools import product
 
 class ControlAffineSystem(ABC):
     """
@@ -264,4 +264,32 @@ class ControlAffineSystem(ABC):
         
         return self.K_lqr
 
+    @property
+    def control_vertices(self) -> List:
+
+        u_lower, u_upper = self.control_limits
+        dir = torch.tensor([0, 1])
+        combine = list(product(dir, repeat=self.nu))
+        u_v = []
+        if self.nu != 0:
+            for i in range(len(combine)):
+                coefficent = torch.tensor(combine[i])
+                u_i = coefficent * u_upper + (1 - coefficent) * u_lower
+                u_v.append(u_i.reshape(1, -1))
+        
+        return u_v
     
+    @property
+    def disturb_vertices(self) -> List:
+        
+        d_lower, d_upper = self.disturbance_limits
+        dir = torch.tensor([0, 1])
+        combine = list(product(dir, repeat=self.nd))
+        d_v = []
+        if self.nd != 0:
+            for i in range(len(combine)):
+                coefficent = torch.tensor(combine[i])
+                d_i = coefficent * d_upper + (1 - coefficent) * d_lower
+                d_v.append(d_i.reshape(1, -1))
+        
+        return d_v
