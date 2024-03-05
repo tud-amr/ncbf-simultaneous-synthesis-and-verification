@@ -133,28 +133,39 @@ class ControlAffineSystem(ABC):
         """
         self.state_constraints = rou
 
-    def set_nominal_state_constraints(self, rou_n):
-        '''
-        rou_n(s) is a function that ros_n(s) >= 0 implies system is nominal safe. Usually this safe set is 
-        hand-designed and conservative.
-        '''
-        self.nominal_state_constraints = rou_n
-
     def set_barrier_function(self, h):
         self.h = h
 
 
     def safe_mask(self, s: torch.Tensor) -> Tuple[bool]:
-        rou_s = self.nominal_state_constraints(s)
-        x = rou_s >=0
-        safe_mask = torch.all(x, dim=1)
-        return safe_mask
+        """
+        Return the mask of s indicating regions that are safe
+        inputs:
+            s: a tensor of (batch_size, self.n_dims) points in the state space
+        returns:
+            a tensor of (batch_size,) booleans indicating whether the corresponding
+            point is in this region.
+        """
+        rou_s = self.state_constraints(s)
+
+        mask = rou_s >= 0
+        
+        return mask.squeeze()
 
     def unsafe_mask(self, s:torch.Tensor) -> Tuple[bool]:
+        """
+        Return the mask of s indicating regions that are unsafe
+        inputs:
+            s: a tensor of (batch_size, self.n_dims) points in the state space
+        returns:
+            a tensor of (batch_size,) booleans indicating whether the corresponding
+            point is in this region.
+        """ 
         rou_s = self.state_constraints(s)
-        x= rou_s >= 0
-        unsafe_mask = torch.all(x, dim=1)
-        return ~unsafe_mask
+
+        mask = rou_s < 0
+       
+        return mask.squeeze()
 
     def boundary_mask(self, s: torch.Tensor) -> torch.Tensor:
         """Return the mask of s indicating regions that are neither nominal_safe nor unsafe

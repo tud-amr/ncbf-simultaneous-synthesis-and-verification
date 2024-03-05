@@ -9,67 +9,45 @@ class NeuralCBF(pl.LightningModule):
     def __init__(
         self,
         dynamic_system: ControlAffineSystem,
-        train_mode: int = 0,
-        primal_learning_rate: float = 1e-3,
+        network_structure: List,
+        learning_rate: float = 1e-3,
         gamma: float = 0.9,
-        clf_lambda: float = 0.5,
+        lambda_: float = 0.5,
         ):
 
         super(NeuralCBF, self).__init__()
         self.dynamic_system = dynamic_system
-        self.train_mode = train_mode
         self.dt = self.dynamic_system.dt
         self.gamma = gamma
-        self.clf_lambda = clf_lambda
+        self.lambda_ = lambda_
         self.use_h0 = False
-
-        # initialize learning rate
-        if train_mode == 0:
-            self.learning_rate = primal_learning_rate
-        elif (train_mode == 1 or train_mode == 3):
-            self.learning_rate = 5e-4
-        elif train_mode == 2:
-            self.learning_rate = 5e-5
-
+        self.pretrain = False
         
-        # initialize model
-        # self.h = nn.Sequential(
-        #         nn.Linear(self.dynamic_system.ns, 256),
-        #         nn.Tanh(),
-        #         nn.Linear(256, 256),
-        #         nn.Tanh(),
-        #         nn.Linear(256, 256),
-        #         nn.Tanh(),
-        #         nn.Linear(256, 1)
-        #     )
-
-        self.h = nn.Sequential(
-                nn.Linear(self.dynamic_system.ns, 32),
-                nn.Tanh(),
-                nn.Linear(32, 32),
-                nn.Tanh(),
-                nn.Linear(32, 1)
-            )
+        self.learning_rate = learning_rate
+      
         
+        self.h = nn.Sequential()
+        for level, layer in enumerate(network_structure):
+            if layer["type"] == "Linear":
+                self.h.add_module(str(level*2), nn.Linear(layer["input_size"], layer["output_size"]))
+                if layer["activation"] == "ReLU":
+                    self.h.add_module(str(level*2+1), nn.ReLU())
+                elif layer["activation"] == "Softmax":
+                    self.h.add_module(str(level*2+1), nn.Softmax(dim=1))
+                elif layer["activation"] == "Tanh":
+                    self.h.add_module(str(level*2+1), nn.Tanh())
+                elif layer["activation"] == "Sigmoid":
+                    self.h.add_module(str(level*2+1), nn.Sigmoid())
+                else:
+                    pass
+
         self.param_init(self.h)
-
         self.h0 = copy.deepcopy(self.h)
         
         # generate control vertices
         self.u_v = self.dynamic_system.control_vertices
         self.d_v = self.dynamic_system.disturb_vertices
         
-    
-        self.descent_loss_name = ['descent_term_linearized', 'descent_term_simulated', 'hji_vi_descent_loss_term']
-        self.safety_loss_name = ['unsafe_region_term','unsafe_area_hji_term', 'regulation_loss_term', 'below_violation']
-        self.performance_lose_name = ['safe_region_term', 'descent_boundary_term', 'hji_vi_boundary_loss_term']
-
-        self.coefficient_for_performance_loss = 1
-        self.coefficient_for_inadmissible_state_loss = 5
-        self.coefficients_for_descent_loss = 5
-
-        self.hji_vi_boundary_loss_term = torch.tensor([0.0])
-        self.hji_vi_descent_loss_term = torch.tensor([0.0])
 
     @staticmethod
     def param_init(m):
@@ -77,25 +55,8 @@ class NeuralCBF(pl.LightningModule):
             if hasattr(m, 'weight'):
                 nn.init.xavier_uniform(m.weight) 
 
-    # def prepare_data(self):
-    #     return self.data_module.prepare_data()
-
-    # def setup(self, stage: Optional[str] = None):
-    #     return self.data_module.setup(stage)
-
-    # def train_dataloader(self):
-    #     # self.data_module.set_dataset()
-    #     return self.data_module.train_dataloader()
-
-    # def val_dataloader(self):
-    #     return self.data_module.val_dataloader()
-
-    # def test_dataloader(self):
-    #     return self.data_module.test_dataloader()
-
     def set_previous_cbf(self, h):
         self.h0.load_state_dict(h.state_dict())
-        self.use_h0 = True
         
     def forward(self, s):
         hs = self.h(s)
@@ -178,214 +139,6 @@ class NeuralCBF(pl.LightningModule):
         
         return Lf_V, Lg_V, Ld_V
 
-    def epsilon_area_loss(self,
-        s : torch.Tensor,
-        safe_mask: torch.Tensor,
-        unsafe_mask: torch.Tensor,
-        grid_gap: torch.Tensor,
-        model: BoundedModule,
-        coefficients_unsafe_epsilon_loss: float=1e2,
-    ) -> List[Tuple[str, torch.Tensor]]:
-        '''
-            compute the epsilon area loss to ensure the continuous satisfaction.
-        
-        '''
-        loss = []
-        gridding_gap = grid_gap
-        data_l = s - gridding_gap
-        data_u = s + gridding_gap
-        
-        # define perturbation
-        # perturbation = PerturbationLpNorm(norm=np.inf, x_L=data_l, x_U=data_u)
-        # define perturbed data
-        # x = BoundedTensor(s, perturbation)
-
-        # lb, ub = model.compute_bounds(x=(x,), method="backward")
-        
-        # compute lb and ub by sampling
-        N_samples = 50
-        lb_list = []
-        ub_list = []
-        for i in range(N_samples):
-            x_sample = torch.rand_like(s) * (data_u - data_l) + data_l
-            h_sample = self.h(x_sample)
-            lb_list.append(h_sample)
-            ub_list.append(h_sample)
-        
-        lb = torch.stack(lb_list, dim=0).min(dim=0)[0]
-        ub = torch.stack(ub_list, dim=0).max(dim=0)[0]
-        
-        indices = torch.where(unsafe_mask>0)
-
-        for i in indices[0]:
-            
-            # augment the data
-            data = (s[i].unsqueeze(dim=0), grid_gap[i].unsqueeze(dim=0))
-            node = self.data_module.new_tree.get_node(self.data_module.uniname_of_data(data))
-            if ub[i] > 0:
-                node.data[2] = False
-            else:
-                node.data[2] = True
-            
-            
-
-        # hs_unsafe_ub = ub[unsafe_mask]
-        # unsafe_ub_violation = coefficients_unsafe_epsilon_loss * F.relu(hs_unsafe_ub)
-
-        # unsafe_hs_epsilon_term = unsafe_ub_violation.mean()
-        # if not torch.isnan(unsafe_hs_epsilon_term):
-        #     loss.append(("unsafe_region_epsilon_term", unsafe_hs_epsilon_term))
-
-        # print(f"unsafe_region_epsilon_term = {unsafe_hs_epsilon_term}")
-        
-        return loss 
-
-    def epsilon_decent_loss(
-        self,
-        s: torch.Tensor,
-        safe_mask: torch.Tensor,
-        unsafe_mask: torch.Tensor,
-        grid_gap: torch.Tensor,
-        hs: torch.Tensor,
-        gradh: torch.Tensor,
-        model: BoundedModule,
-        model_jacobian: BoundedModule,
-        coefficients_descent_loss: float=1e2,
-        accuracy: bool = False,
-    )  -> List[Tuple[str, torch.Tensor]]:
-
-        ################################# compute bound on epsilon area #####################################
-        
-        loss = []
-
-        positive_mask =  torch.logical_not(unsafe_mask) # torch.logical_and(torch.logical_not(unsafe_mask), hs < 1)
-        
-        ############################ compute epslon area decrease loss #########################################
-
-        bs = s.shape[0]
-        gridding_gap = grid_gap/2
-        data_l = s - gridding_gap
-        data_u = s + gridding_gap
-
-        
-        # number_of_samples = 50
-        # dxdt_list = []
-        # for i in range(number_of_samples):
-        #     sample = (data_u - data_l) * torch.rand_like(data_l) + data_l
-        #     u, d_min = self.get_control_disturb_vertices(sample)
-        #     # print(f"sample  is {sample}")
-        #     try:
-        #         dxdt = self.dynamic_system.dsdt(sample, u=u)
-        #     except:
-        #         print(f"u is {u}")
-        #     dxdt_list.append(dxdt)
-
-        # dxdt = torch.stack(dxdt_list, dim=0)
-
-        # dxdt_min, _ = torch.min(dxdt, dim=0)
-        # dxdt_max, _ = torch.max(dxdt, dim=0)
-      
-
-        u_qp, d_min = self.get_control_disturb_vertices(s)
-
-
-        lb_dx, ub_dx = self.dynamic_system.range_dxdt(data_l, data_u, u_qp)
-        # lb_dx = dxdt_min
-        # ub_dx = dxdt_max
-        # print(f"lb_dx is {lb_dx}")
-        # print(f"ub_dx is {ub_dx}")
-
-
-        # # define perturbation
-        # perturbation = PerturbationLpNorm(norm=np.inf, x_L=data_l, x_U=data_u)
-        # # define perturbed data
-        # x = BoundedTensor(s, perturbation)
-        
-        # #### A lower upper 
-        # required_A = defaultdict(set)
-        # required_A[model.output_name[0]].add(model.input_name[0])
-
-        # lb_h, ub_h = model.compute_bounds(x=(x,), method="backward")
-
-        # compute lb and ub by sampling
-        N_samples = 50
-        lb_list = []
-        ub_list = []
-        for i in range(N_samples):
-            x_sample = torch.rand_like(s)* (data_u - data_l) + data_l
-            h_sample = self.h(x_sample)
-            lb_list.append(h_sample)
-            ub_list.append(h_sample)
-        
-        lb_h = torch.stack(lb_list, dim=0).min(dim=0)[0]
-        ub_h = torch.stack(ub_list, dim=0).max(dim=0)[0]
-
-        # print(f"lb is {lb}")
-        # print(f"ub is {ub}")
-        # A_lower, b_lower = A_dict[model.output_name[0]][model.input_name[0]]['lA'], A_dict[model.output_name[0]][model.input_name[0]]['lbias']
-        # A_upper, b_upper = A_dict[model.output_name[0]][model.input_name[0]]['uA'], A_dict[model.output_name[0]][model.input_name[0]]['ubias']
-        
-        
-        ########### A_J_lower upper
-
-        # jacobian_lower, jacobian_upper = model_jacobian.compute_jacobian_bounds(x)
-
-        # compute jacobian bound by sampling
-        N_samples = 50
-        jacobian_lower_list = []
-        jacobian_upper_list = []
-        for i in range(N_samples):
-            x_sample = torch.rand_like(s) * (data_u - data_l) + data_l
-            hs_sample = self.h(x_sample)
-            jacobian_sample = self.jacobian(hs_sample, x_sample)
-
-            jacobian_lower_list.append(jacobian_sample)
-            jacobian_upper_list.append(jacobian_sample)
-
-        jacobian_lower = torch.stack(jacobian_lower_list, dim=0).min(dim=0)[0]
-        jacobian_upper = torch.stack(jacobian_upper_list, dim=0).max(dim=0)[0]
-
-        # print(f"lower_jacobian is {jacobian_lower}")
-        # print(f"upper_jacobian is {jacobian_upper}")
-        lb_j = jacobian_lower.reshape(bs, -1).to(s.device)
-        ub_j = jacobian_upper.reshape(bs, -1).to(s.device)
-        # print(f"lb_j is {lb_j}")
-        # print(f"ub_j is {ub_j}")
-
-        # compute the multiplication of lower bound and upper bound
-        lb_j_lb_dx = torch.mul(lb_j, lb_dx)
-        ub_j_ub_dx = torch.mul(ub_j, ub_dx)
-        lb_j_ub_dx = torch.mul(lb_j, ub_dx)
-        ub_j_lb_dx = torch.mul(ub_j, lb_dx)
-
-        # sovlve convex relaxation problem
-        # J, dx, X, h= self._solve_convex_relataxion(lb_j, ub_j, lb_dx, ub_dx, lb_h, ub_h, lb_j_lb_dx, ub_j_ub_dx, lb_j_ub_dx, ub_j_lb_dx)
-
-        # q_min = torch.sum(X, dim=1, keepdim=True) + self.clf_lambda * h
-
-        q_min_1 = torch.sum(lb_j_lb_dx, dim=1, keepdim=True) + self.clf_lambda * lb_h
-        q_min_2 = torch.sum(ub_j_ub_dx, dim=1, keepdim=True) + self.clf_lambda * lb_h
-        q_min_3 = torch.sum(lb_j_ub_dx, dim=1, keepdim=True) + self.clf_lambda * lb_h
-        q_min_4 = torch.sum(ub_j_lb_dx, dim=1, keepdim=True) + self.clf_lambda * lb_h
-
-        q_min = torch.min(torch.min(q_min_1, q_min_2), torch.min(q_min_3, q_min_4))
-        
-        indices = torch.where(positive_mask.squeeze(dim=-1)>0)
-       
-
-        for i in indices[0]:
-            # augment the data
-            data = (s[i].unsqueeze(dim=0), grid_gap[i].unsqueeze(dim=0))
-            node = self.data_module.new_tree.get_node(self.data_module.uniname_of_data(data))
-            if q_min[i] < 0.0:
-                node.data[2] = False
-            else:
-                node.data[2] = True
-          
-
-        return loss
-
-
     def verify(self,
                 s : torch.Tensor,
                 grid_gap: torch.Tensor,
@@ -393,6 +146,18 @@ class NeuralCBF(pl.LightningModule):
                 unsafe_mask: torch.Tensor,
                 satisfied: torch.Tensor,
                 ):
+        """Verify the CBF condition for a given state
+        inputs:
+            s: bs x self.dynamics_model.n_dims tensor of state
+            grid_gap: bs x self.dynamics_model.n_dims tensor of grid gap
+            safe_mask: (bs,) tensor of safe mask
+            unsafe_mask: (bs,) tensor of unsafe mask
+            satisfied: bs x 1 tensor of satisfied mask
+        returns:
+            unsatisfied_index: a one-dimension tensor of unsatisfied index
+        """
+
+
         # chech if unsafe hyperrectangles are all below zero
         data_l = s - grid_gap
         data_u = s + grid_gap
@@ -422,9 +187,9 @@ class NeuralCBF(pl.LightningModule):
         # check if the safe hyperrectangles satisfy cbf condition
         positive_mask =  torch.logical_not(unsafe_mask)
 
-        u_qp, d_min = self.get_control_disturb_vertices(s)
+        u_max, d_min = self.get_control_disturb_vertices(s)
 
-        lb_dx, ub_dx = self.dynamic_system.range_dxdt(data_l, data_u, u_qp)
+        lb_dx, ub_dx = self.dynamic_system.range_dxdt(data_l, data_u, u_max)
 
         # # define perturbation
         # perturbation = PerturbationLpNorm(norm=np.inf, x_L=data_l, x_U=data_u)
@@ -485,18 +250,62 @@ class NeuralCBF(pl.LightningModule):
         # sovlve convex relaxation problem
         # J, dx, X, h= self._solve_convex_relataxion(lb_j, ub_j, lb_dx, ub_dx, lb_h, ub_h, lb_j_lb_dx, ub_j_ub_dx, lb_j_ub_dx, ub_j_lb_dx)
 
-        # q_min = torch.sum(X, dim=1, keepdim=True) + self.clf_lambda * h
+        # q_min = torch.sum(X, dim=1, keepdim=True) + self.lambda_ * h
 
-        q_min_1 = torch.sum(lb_j_lb_dx, dim=1, keepdim=True) + self.clf_lambda * lb_h
-        q_min_2 = torch.sum(ub_j_ub_dx, dim=1, keepdim=True) + self.clf_lambda * lb_h
-        q_min_3 = torch.sum(lb_j_ub_dx, dim=1, keepdim=True) + self.clf_lambda * lb_h
-        q_min_4 = torch.sum(ub_j_lb_dx, dim=1, keepdim=True) + self.clf_lambda * lb_h
+        q_min_1 = torch.sum(lb_j_lb_dx, dim=1, keepdim=True) + self.lambda_ * lb_h
+        q_min_2 = torch.sum(ub_j_ub_dx, dim=1, keepdim=True) + self.lambda_ * lb_h
+        q_min_3 = torch.sum(lb_j_ub_dx, dim=1, keepdim=True) + self.lambda_ * lb_h
+        q_min_4 = torch.sum(ub_j_lb_dx, dim=1, keepdim=True) + self.lambda_ * lb_h
 
         q_min = torch.min(torch.min(q_min_1, q_min_2), torch.min(q_min_3, q_min_4))
         
         unsatified_index = torch.logical_or( torch.logical_and(positive_mask>0, q_min < 0.0),  unsatified_index )
        
         return torch.where(unsatified_index.squeeze(dim=-1)>0)[0]
+
+    def hij_vi_loss(
+        self,
+        s : torch.Tensor,
+        safe_mask: torch.Tensor,
+        unsafe_mask: torch.Tensor,
+        hs : torch.Tensor,
+        gradh : torch.Tensor,
+        coefficient: float = 2.0,
+    ) -> List[Tuple[str, torch.Tensor]]:
+        """
+        Evaluate the loss based on hamilton-issac-jacobian condition
+
+        args:
+            s: the points at which to evaluate the loss,
+            goal_mask: the points in x marked as part of the goal
+            safe_mask: the points in x marked safe
+            unsafe_mask: the points in x marked unsafe
+        returns:
+            loss: a list of tuples containing ("category_name", loss_value).
+        """
+        
+        # Compute loss to encourage satisfaction of the following conditions...
+        loss = []
+
+        baseline = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values.detach() - 0.1
+
+        u_max, d_min = self.get_control_disturb_vertices(s)
+     
+        # compute the hamiltonian
+        with torch.no_grad():
+            x_next = self.dynamic_system.step(s, u=u_max, d=d_min)
+            hs_next = self.h(x_next)
+
+        gamma = 0.99
+        hs_bar = (1- gamma) * baseline + gamma * torch.min(baseline, hs_next)
+
+        safe_violation = coefficient * torch.abs(  hs_bar - hs )
+        safe_hs_term =  safe_violation.mean()
+        if not torch.isnan(safe_hs_term):
+            loss.append(("hij_vi_loss_term", safe_hs_term))
+
+        return loss
+
 
     def cbvf_vi_loss(
         self,
@@ -508,10 +317,8 @@ class NeuralCBF(pl.LightningModule):
         grid_gap: torch.Tensor = None,
         model: torch.Tensor = None,
         model_jacobian: torch.Tensor = None,
-        coefficients_hji_boundary_loss: float=0.1,
-        coefficients_hji_descent_loss: float=2,
-        coefficients_hji_inadmissible_loss: float = 2,
-        requires_grad: bool = True,
+        coefficient: float = 2.0,
+        
     ) -> List[Tuple[str, torch.Tensor]]:
 
         loss = []
@@ -530,9 +337,9 @@ class NeuralCBF(pl.LightningModule):
 
         # condition_active = torch.sigmoid(10 * (1.0 + eps - H))
 
-        # u_qp, qp_relaxation = self.solve_CLF_QP(s, gradh,requires_grad=requires_grad, epsilon=0)
-        # u_qp = self.solve_CLF_QP(s, requires_grad=requires_grad, epsilon=0)
-        # u_qp = torch.ones(s.shape[0], self.dynamic_system.nu, requires_grad=True).float().to(s.device)
+        # u_max, qp_relaxation = self.solve_CLF_QP(s, gradh,requires_grad=requires_grad, epsilon=0)
+        # u_max = self.solve_CLF_QP(s, requires_grad=requires_grad, epsilon=0)
+        # u_max = torch.ones(s.shape[0], self.dynamic_system.nu, requires_grad=True).float().to(s.device)
         # qp_relaxation = torch.mean(qp_relaxation, dim=-1)
 
         # ####### Minimize the qp relaxation to encourage satisfying the decrease condition #################
@@ -542,12 +349,12 @@ class NeuralCBF(pl.LightningModule):
         # Get the current value of the CLBF and its Lie derivatives
         Lf_V, Lg_V, Ld_V= self.V_lie_derivatives(s, gradh)
 
-        u_qp, d_min = self.get_control_disturb_vertices(s)
+        u_max, d_min = self.get_control_disturb_vertices(s)
 
-        if u_qp is not None:
+        if u_max is not None:
             control_term = torch.bmm(
                             Lg_V[:, :].unsqueeze(1),
-                            u_qp.reshape(-1, self.dynamic_system.nu, 1)
+                            u_max.reshape(-1, self.dynamic_system.nu, 1)
                         ) 
         else:
             control_term = 0
@@ -565,47 +372,22 @@ class NeuralCBF(pl.LightningModule):
                 
         Vdot = Vdot.reshape(hs.shape)
 
-        decent_violation_lin = Vdot + self.clf_lambda * hs - 0.5
-
-        # decent_violation_lin = decent_violation_lin[torch.logical_not(unsafe_mask)]
+        decent_violation_lin = Vdot + self.lambda_ * hs - 0.5
 
         cbvf_vi_loss, index_min = torch.min(torch.hstack([value_fun_violation, decent_violation_lin]), dim=1)
 
-        cbvf_vi_loss_term = coefficients_hji_descent_loss * torch.abs(cbvf_vi_loss)[positive_mask.squeeze(dim=-1)].mean()
-        # hji_vi_loss_term = coefficients_hji_descent_loss * F.relu(-cbvf_vi_loss).mean()
-     
-
-        descent_loss_mask =  (index_min > 0)
-        boundary_loss_mask = torch.logical_not(descent_loss_mask)
-        
-        descent_loss_mask = torch.logical_and(descent_loss_mask, positive_mask.squeeze())
-        boundary_loss_mask = torch.logical_and(boundary_loss_mask, positive_mask.squeeze())
-        
-        cbvf_vi_boundary_loss = cbvf_vi_loss[boundary_loss_mask]
-        cbvf_vi_descent_loss =  cbvf_vi_loss[descent_loss_mask]
-        
-        self.hji_vi_boundary_loss_term =  torch.abs(cbvf_vi_boundary_loss).mean().detach()
-        self.hji_vi_descent_loss_term = torch.abs(cbvf_vi_descent_loss).mean().detach()
-        
-        # condition_active = torch.sigmoid(2 * ( - self.hji_vi_boundary_loss_term))
-        # decent_violation_lin = decent_violation_lin * condition_active
-
-        # cbvf_vi_loss, index_min = torch.min(torch.hstack([value_fun_violation, decent_violation_lin]), dim=1)
-        # hji_vi_loss_term = coefficients_hji_descent_loss * torch.abs(cbvf_vi_loss)[positive_mask.squeeze(dim=-1)].mean()
-
-        # loss.append(("hji_vi_boundary_loss_term", hji_vi_boundary_loss_term))
-        # loss.append(("hji_vi_descent_loss_term", hji_vi_descent_loss_term))
-        if self.train_mode != 2:
-            loss.append(("hji_vi_descent_loss_term", cbvf_vi_loss_term))
+        cbvf_vi_loss_term = coefficient * torch.abs(cbvf_vi_loss)[positive_mask.squeeze(dim=-1)].mean()
+         
+        loss.append(("hji_vi_descent_loss_term", cbvf_vi_loss_term))
             
 
         #############################################
-        # xdot = self.dynamics_model.closed_loop_dynamics(x, u_qp, params=s)
+        # xdot = self.dynamics_model.closed_loop_dynamics(x, u_max, params=s)
 
-        # x_next = self.dynamic_system.step(s, u_qp)
+        # x_next = self.dynamic_system.step(s, u_max)
         # H_next = self.h(x_next)
         # violation = F.relu(
-        #     - ((H_next - hs) / self.dynamic_system.dt + self.clf_lambda * hs)
+        #     - ((H_next - hs) / self.dynamic_system.dt + self.lambda_ * hs)
         # )
         # violation = coefficients_hji_descent_loss * violation # * condition_active
 
@@ -628,10 +410,6 @@ class NeuralCBF(pl.LightningModule):
         # regulation_loss = 1 * F.relu( hs -  (hs.detach() - 0.05)) * torch.sigmoid(- 5 * self.hji_vi_boundary_loss_term ) 
         regulation_loss_term = regulation_loss[unsafe_mask].mean()
         loss.append(("regulation_loss_term", regulation_loss_term))
-
-        placeholder_loss = 50 * F.relu( hs - 100000 )
-        placeholder_loss_term = placeholder_loss.mean()
-        loss.append(("placeholder_loss_term", placeholder_loss_term))
 
 
         return loss
@@ -679,27 +457,14 @@ class NeuralCBF(pl.LightningModule):
             assert u_ref is not None, err_message
         
         if requires_grad:
-            # return self._solve_CLF_QP_cvxpylayers(
-            #     x, u_ref, H, Lf_V, Lg_V, relaxation_penalty, epsilon=epsilon
-            # )
-
-            # return self._solve_CLF_QP_cvxpylayers2(
-            #     x, u_ref, H, Lf_V, Lg_V, relaxation_penalty, epsilon=epsilon
-            # )
-
             return self._solve_CLF_QP_OptNet(
                 x, u_ref, H, Lf_V, Lg_V, relaxation_penalty, epsilon=epsilon
             )
-
-            # return self._solve_CLF_QP_OptNet2(
-            #     x, u_ref, H, Lf_V, Lg_V, relaxation_penalty, epsilon=epsilon
-            # )
         else:
             return self._solve_CLF_QP_gurobi(
             x, u_ref, H, Lf_V, Lg_V, relaxation_penalty, epsilon=epsilon
         )
     
-
     def _solve_CLF_QP_gurobi(
         self,
         x: torch.Tensor,
@@ -791,7 +556,7 @@ class NeuralCBF(pl.LightningModule):
                     Lg_V_np = Lg_V[batch_idx, :].detach().cpu().numpy()
                     Lf_V_np = Lf_V[batch_idx, 0].detach().cpu().numpy()
                     V_np = V[batch_idx, 0].detach().cpu().numpy()
-                    clf_constraint = -(Lf_V_np + Lg_V_np @ u + self.clf_lambda * V_np - epsilon)
+                    clf_constraint = -(Lf_V_np + Lg_V_np @ u + self.lambda_ * V_np - epsilon)
                     if allow_relaxation:
                         clf_constraint -= r[0]
                     model.addConstr(clf_constraint <= 0.0, name=f"Scenario {0} Decrease")
@@ -891,16 +656,14 @@ class NeuralCBF(pl.LightningModule):
         h = self.h(s)
         dh = self.Dh(s, u_vi)
 
-        result = dh + self.clf_lambda * h
+        result = dh + self.lambda_ * h
         
         return result
 
 
     def get_control_disturb_vertices(self, s):
-
-        assert self.use_h0 == True, "h0 is not defined"
         
-        u_qp = None
+        u_max = None
         d_min = None
 
         if self.use_h0:
@@ -918,8 +681,8 @@ class NeuralCBF(pl.LightningModule):
 
                 index_control = index_control.squeeze()
                 u_v = torch.cat(self.u_v, dim=0)
-                u_qp = u_v[index_control]
-                u_qp = u_qp.reshape(-1, self.dynamic_system.nu).to(s.device)
+                u_max = u_v[index_control]
+                u_max = u_max.reshape(-1, self.dynamic_system.nu).to(s.device)
             
 
             if self.dynamic_system.nd != 0:
@@ -939,16 +702,52 @@ class NeuralCBF(pl.LightningModule):
                 d_min = d_v[index_control]
                 d_min = d_min.reshape(-1, self.dynamic_system.nd).to(s.device)
         else:
-            raise f"please load guide function first"
+            if self.dynamic_system.nu != 0:
+                # find the action that maximize the hamiltonian
+                hs_next_list = []
+                for u in self.u_v:
+                    with torch.no_grad():
+                        x_next = self.dynamic_system.step(s, u=torch.ones(s.shape[0], self.dynamic_system.nu).to(s.device)*u.to(s.device))
+                        hs_next = self.h(x_next)
+                        hs_next_list.append(hs_next)
 
-        return u_qp, d_min
+                hs_next = torch.stack(hs_next_list, dim=1)
+                _ , index_control = torch.max(hs_next, dim=1, keepdim=True)
+
+                index_control = index_control.squeeze()
+                u_v = torch.cat(self.u_v, dim=0)
+                u_max = u_v[index_control]
+                u_max = u_max.to(s.device)
+            else:
+                u_max = None
+            
+            if self.dynamic_system.nd != 0:
+                # find the disturbance that minimize the hamiltonian
+                hs_next_list = []
+                for d in self.d_v:
+                    with torch.no_grad():
+                        x_next = self.dynamic_system.step(s, d=torch.ones(s.shape[0], self.dynamic_system.nd).to(s.device)*d.to(s.device))
+                        hs_next = self.h(x_next)
+                        hs_next_list.append(hs_next)
+
+                hs_next = torch.stack(hs_next_list, dim=1)
+                _, index_control = torch.min(hs_next, dim=1, keepdim=True)
+
+                index_control = index_control.squeeze()
+                d_v = torch.cat(self.d_v, dim=0)
+                d_min = d_v[index_control]
+                d_min = d_min.to(s.device)
+            else:
+                d_min = None
+            
+
+        return u_max, d_min
             
 
     def on_train_start(self) -> None:
-        print(f"############### Training start #########################")
+        print_info(f"############### Training start #########################")
 
     def on_train_epoch_start(self) -> None:
-        print("################## the epoch start #####################")
         self.epoch_start_time = time.time()
 
         return super().on_train_epoch_start()
@@ -962,105 +761,43 @@ class NeuralCBF(pl.LightningModule):
         unsafe_mask = unsafe_mask.flatten()
 
         s.requires_grad_(True)
-        
-        # s = torch.Tensor([1.23, 0.1]).to(s.device).reshape(-1,2)
 
         # Compute the losses
         component_losses = {}
-       
-        s_random = s # + torch.mul(grid_gap , torch.rand(s.shape[0], self.dynamic_system.ns, requires_grad=True).to(s.device)) - grid_gap/2
         
-        hs = self.h(s_random)
-        gradh = self.jacobian(hs, s_random)
+        hs = self.h(s)
+        gradh = self.jacobian(hs, s)
 
-       
-        if self.train_mode == 0:
-         
+        if self.pretrain:
             component_losses.update(
-                self.cbvf_vi_loss(s_random, safe_mask, unsafe_mask, 
+                self.hij_vi_loss(s, safe_mask, unsafe_mask, 
                                 hs, gradh, 
-                                coefficients_hji_boundary_loss=self.coefficient_for_performance_loss,
-                                coefficients_hji_descent_loss=self.coefficients_for_descent_loss,
-                                coefficients_hji_inadmissible_loss=self.coefficient_for_inadmissible_state_loss)
+                                coefficient=100)
+            )
+        else:
+            component_losses.update(
+                self.cbvf_vi_loss(s, safe_mask, unsafe_mask, 
+                                hs, gradh, 
+                                coefficient=5)
             )
             
-
-        if self.train_mode == 1:
-           
-            component_losses.update(
-                self.cbvf_vi_loss(s_random, safe_mask, unsafe_mask, 
-                                hs, gradh, 
-                                coefficients_hji_boundary_loss=self.coefficient_for_performance_loss,
-                                coefficients_hji_descent_loss=self.coefficients_for_descent_loss,
-                                coefficients_hji_inadmissible_loss=self.coefficient_for_inadmissible_state_loss)
-            )
-
-
-
-        # if self.train_mode == 2:
-            
-        #     component_losses.update(
-        #         self.cbvf_vi_loss(s_random, safe_mask, unsafe_mask, 
-        #                         hs, gradh, 
-        #                         coefficients_hji_boundary_loss=self.coefficient_for_performance_loss,
-        #                         coefficients_hji_descent_loss=self.coefficients_for_descent_loss,
-        #                         coefficients_hji_inadmissible_loss=self.coefficient_for_inadmissible_state_loss)
-        #     )
-
-        #     if (self.current_epoch+1) % self.trainer.reload_dataloaders_every_n_epochs == 0:
-        #         # copy_h_bound = copy.deepcopy(self.h)
-        #         # model = BoundedModule(copy_h_bound, s)
-        #         # model.train()
-
-        #         # copy_h_j =  copy.deepcopy(self.h)
-        #         # model_jacobian = BoundedModule(copy_h_j, s,
-        #         #                                 bound_opts={
-        #         #                                                 'sparse_features_alpha': False,
-        #         #                                                 'sparse_spec_alpha': False,
-        #         #                                             })
-        #         # model_jacobian.augment_gradient_graph(s)
-        #         # model_jacobian.train()
-        #         with torch.no_grad():
-        #             model = None
-        #             model_jacobian = None
-
-        #             component_losses.update(
-        #                 self.epsilon_decent_loss(
-        #                     s, safe_mask, unsafe_mask, grid_gap, hs, gradh, model, model_jacobian, coefficients_descent_loss=1
-        #                 )
-        #             )
-        #             component_losses.update(
-        #                 self.epsilon_area_loss(s, safe_mask, unsafe_mask, grid_gap,model, coefficients_unsafe_epsilon_loss=100)
-        #             )
-        #         # del copy_h_bound
-        #         # del copy_h_j
-
-        if self.train_mode == 3:
-            
-            component_losses.update(
-                self.cbvf_vi_loss(s_random, safe_mask, unsafe_mask, 
-                                hs, gradh, 
-                                coefficients_hji_boundary_loss=self.coefficient_for_performance_loss,
-                                coefficients_hji_descent_loss=self.coefficients_for_descent_loss,
-                                coefficients_hji_inadmissible_loss=self.coefficient_for_inadmissible_state_loss)
-            )
 
         # Compute the overall loss by summing up the individual losses
         total_loss = torch.tensor(0.0).type_as(s)
-        safety_loss = torch.tensor(0.0).type_as(s)
-        performance_loss = torch.tensor(0.0).type_as(s)
-        descent_loss = torch.tensor(0.0).type_as(s)
+        # safety_loss = torch.tensor(0.0).type_as(s)
+        # performance_loss = torch.tensor(0.0).type_as(s)
+        # descent_loss = torch.tensor(0.0).type_as(s)
 
         # For the objectives, we can just sum them
         for key, loss_value in component_losses.items():
             if not torch.isnan(loss_value):
                 total_loss += loss_value
-            if key in self.performance_lose_name:
-                performance_loss += loss_value
-            if key in self.safety_loss_name:
-                safety_loss += loss_value
-            if key in self.descent_loss_name:
-                descent_loss += loss_value
+            # if key in self.performance_lose_name:
+            #     performance_loss += loss_value
+            # if key in self.safety_loss_name:
+            #     safety_loss += loss_value
+            # if key in self.descent_loss_name:
+            #     descent_loss += loss_value
         
 
         batch_dict = {"loss": total_loss, **component_losses}
@@ -1096,20 +833,11 @@ class NeuralCBF(pl.LightningModule):
             key_losses = torch.stack(losses[key])
             avg_losses[key] = torch.nansum(key_losses) / key_losses.shape[0]
 
-        descent_losses = 0.0
-        safety_losses = 0.0
-        performance_losses = 0.0
-        
+       
+        average_loss = 0.0
         
         for key in avg_losses.keys():
-            if key in self.safety_loss_name:
-                safety_losses += avg_losses[key]
-            if key in self.performance_lose_name:
-                performance_losses += avg_losses[key]
-            if key in self.descent_loss_name:
-                descent_losses += avg_losses[key]
-        
-        average_loss = safety_losses + performance_losses + descent_losses
+            average_loss += avg_losses[key]
 
 
         # Log the overall loss...
@@ -1118,17 +846,7 @@ class NeuralCBF(pl.LightningModule):
         print_info(f"\n the overall loss of this training epoch {average_loss}\n")
         self.log("Epoch_time/train", self.epoch_end_time - self.epoch_start_time)
         print_info(f"the epoch time consume is {self.epoch_end_time - self.epoch_start_time}")
-        # self.log("Safety_loss/train", safety_losses)
-        # print(f"overall safety loss of this training epoch {safety_losses}")
-        # self.log("Descent_loss/train", descent_losses)
-        # print(f"overall descent loss of this training epoch {descent_losses}")
-        # self.log("Performance_loss/train", performance_losses)
-        # print(f"overall performance loss of this training epoch {performance_losses}")
-        # print(f"the adaptive coefficient is {self.coefficients_for_descent_loss}")
-
-        # print(f"hji_vi boundary loss is  {self.hji_vi_boundary_loss_term}")
-        # print(f"hji_vi descent loss is  {self.hji_vi_descent_loss_term}")
-
+       
         # And all component losses
         for loss_key in avg_losses.keys():
             # We already logged overall loss, so skip that here
@@ -1136,45 +854,19 @@ class NeuralCBF(pl.LightningModule):
                 continue
             # Log the other losses
             self.log(loss_key + "/train", avg_losses[loss_key], sync_dist=True)
-
            
-        if self.train_mode == 0 and (performance_losses < 1 and safety_losses < 1): # warm up
-            self.trainer.should_stop = True
-            # pass
-        
-
-        if self.train_mode == 1 and (safety_losses < 1e-3 and descent_losses < 1e-2 ):
-            self.trainer.should_stop = True
-
-        if self.train_mode == 2 and ( safety_losses < 1e-2 and descent_losses < 1e-2 ) :
-            # self.trainer.should_stop = True
-            pass
-        
-        if self.train_mode == 1 and (self.current_epoch + 1) % (self.trainer.reload_dataloaders_every_n_epochs ) == 0:
-            self.data_module.augment_dataset()
-            torch.save(self.data_module.s_training, "s_training.pt")
-            
-
-        if (self.train_mode == 2 or self.train_mode == 3 ) and (self.current_epoch + 1) % (self.trainer.reload_dataloaders_every_n_epochs ) == 0:
-            self.data_module.augment_dataset()
-            # torch.save(self.data_module.s_training, "s_training.pt")
-            if self.data_module.verified == 1:
-                print("verified!!!!!!!!!!!")
-                self.trainer.should_stop = True
-            elif self.data_module.verified == 0:
-                print("reach minimum gap!!!!!!!!!!!")
-                self.trainer.should_stop = True
-            else:
-                pass               
-        
-        print_info(f"current learning rate is {self.trainer.optimizers[0].param_groups[0]['lr']}")
+        # print_info(f"current learning rate is {self.trainer.optimizers[0].param_groups[0]['lr']}")
 
     def on_train_end(self) -> None:
 
         return super().on_train_end()
+    
+    def on_test_start(self) -> None:
+        print_info(f"############### Testing start #########################")
 
     def test_step(self, batch, batch_idx):
         """Conduct the validation step for the given batch"""
+        
         # Extract the input and masks from the batch
     
         x, _, safe_mask, unsafe_mask, _ = batch
@@ -1249,11 +941,12 @@ class NeuralCBF(pl.LightningModule):
 
     def test_epoch_end(self, outputs):
         
-        print("test_epoch_end")
+        print_info("############### Testing end #########################")
+        
         save_dir = self.trainer.default_root_dir + "/test_results.pt" 
         torch.save(outputs, save_dir)
         
-        print(f"results is save to {save_dir}")
+        print_info(f"results is save to {save_dir}")
         
 
 

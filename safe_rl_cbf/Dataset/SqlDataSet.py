@@ -96,18 +96,23 @@ class SqlDataSet(Dataset):
         self.conn.commit()
         self.conn.close()
 
-    def to_tensor(self):
+    def to_tensor(self, num=-1):
         self.cursor.execute("""
                SELECT * FROM training_data;
             """)
         data = self.cursor.fetchall()
         data = [self.TrainingPoint.convert_point(rectangle, nominal_safe_mask, unsafe_mask, satisfied, self.ns) for rectangle, nominal_safe_mask, unsafe_mask, satisfied in data]
+        
+       
+        num = min(num, len(data))
+        num = len(data) if num == -1 else num
+        
         try:
-            s = torch.vstack([d.s for d in data])
-            grid_gap = torch.vstack([d.grid_gap for d in data])
-            nominal_safe_mask = torch.vstack([d.nominal_safe_mask for d in data])
-            unsafe_mask = torch.vstack([d.unsafe_mask for d in data])
-            satisfied = torch.vstack([d.satisfied for d in data])
+            s = torch.vstack([d.s for d in data[:num]])
+            grid_gap = torch.vstack([d.grid_gap for d in data[:num]])
+            nominal_safe_mask = torch.vstack([d.nominal_safe_mask for d in data[:num]])
+            unsafe_mask = torch.vstack([d.unsafe_mask for d in data[:num]])
+            satisfied = torch.vstack([d.satisfied for d in data[:num]])
         except:
             s = torch.Tensor()
             grid_gap = torch.Tensor()

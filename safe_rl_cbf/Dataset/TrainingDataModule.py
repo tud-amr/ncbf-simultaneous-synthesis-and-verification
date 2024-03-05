@@ -22,7 +22,7 @@ class TrainingDataModule(DataModule):
         print("Preparing data........")
         ns = self.system.ns
 
-        self.add_random_data( self.training_points_num )
+        self.insert_random_data( self.training_points_num )
         print("Full dataset:")
         print("\t----------------------")
         print(f"\t{len(self.sql_database)} training")

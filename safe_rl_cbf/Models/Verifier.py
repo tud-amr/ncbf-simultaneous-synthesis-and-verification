@@ -12,7 +12,7 @@ class Verifier:
         self.log_dir = log_dir
         self.verify_data_module = VerificationDataModule(system=self.model.dynamic_system, 
                                                          initial_grid_gap=self.initial_grid_gap, 
-                                                         verify_batch_size=verify_batch_size, prefix=self.prefix, log_dir=self.log_dir)    
+                                                         verify_batch_size=verify_batch_size, prefix=self.prefix+"verify", log_dir=self.log_dir)    
         self.temporary_data_module = DataModule(system=self.model.dynamic_system, batch_size=verify_batch_size, prefix=self.prefix + "temporary", log_dir=self.log_dir)
         self.augment_data_module = DataModule(system=self.model.dynamic_system, batch_size=verify_batch_size, prefix=self.prefix + "augment", log_dir=self.log_dir)
 
@@ -37,6 +37,7 @@ class Verifier:
 
     def verify(self):
         
+        print_info("#################### Start verifying the neural network #####################")
         verified_flag = False
         reach_minimum_gap = False 
 
@@ -61,7 +62,7 @@ class Verifier:
                 unsatisfied_indices = self.model.verify(s, s_gridding_gap, safe_mask, unsafe_mask, satisfied)
                 if unsatisfied_indices.shape[0] != 0:
                     verified_flag = False
-
+                   
                 # split the hyperrectangles that are not verified
                 for i in unsatisfied_indices:
                     
@@ -87,7 +88,15 @@ class Verifier:
                     else:
                         # keep this hyperrectangle
                         self.temporary_data_module.add_batch_data(leave_node_s, leave_node_grid_gap, safe_mask[i].reshape(-1,1), unsafe_mask[i].reshape(-1,1), satisfied[i].reshape(-1,1))
-                        
+            
+            self.temporary_data_module.push_to_database()
+            
+            if verified_flag == False:
+                print_warning(f"found {len(self.temporary_data_module)} unsatisfied hyperrectangles, will split them")
+
+            if reach_minimum_gap == True:
+                print_warning(f"reach minimum grid gap, stop branching")
+            
             # delete the previous batch points
             self.verify_data_module.clean()
             

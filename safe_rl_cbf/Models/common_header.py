@@ -11,6 +11,11 @@ import sqlite3
 from abc import ABC, abstractmethod
 from termcolor import colored
 import json
+import scipy.io as sio
+from matplotlib.patches import Patch
+from matplotlib.lines import Line2D
+import argparse
+
 
 import torch
 from torch import nn
@@ -38,10 +43,10 @@ import matplotlib.pyplot as plt
 
 
 def print_error(message):
-    print(colored(message, 'red', attrs=['bold']))
+    print(colored(message, 'red'))
 
 def print_warning(message):
-    print(colored(message, 'yellow', attrs=['bold']))
+    print(colored(message, 'yellow'))
 
 def print_info(message):
-    print(colored(message, 'blue', attrs=['bold']))
+    print(colored(message, 'blue'))

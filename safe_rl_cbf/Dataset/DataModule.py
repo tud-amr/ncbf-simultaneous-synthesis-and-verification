@@ -17,6 +17,8 @@ class DataModule(pl.LightningDataModule):
         self.log_dir = log_dir
         self.sql_database = SqlDataSet(self.system.ns, self.prefix, self.log_dir)
         self.sql_bandwith = 1e5
+        self.TrainingPoint = self.sql_database.TrainingPoint
+        self.point_list = []
 
     def __len__(self):
         return len(self.sql_database)
@@ -30,10 +32,11 @@ class DataModule(pl.LightningDataModule):
         self.prepare_data()
 
     def clean(self):
+        self.point_list.clear()
         self.sql_database.clean()
 
-    def save_as_tensor(self, file_name="s.pt"):
-        s, _, _, _, _  = self.sql_database.to_tensor()
+    def save_as_tensor(self, file_name="s.pt", num=-1):
+        s, _, _, _, _  = self.sql_database.to_tensor(num)
 
         torch.save(s, os.path.join(self.log_dir, file_name))
 
@@ -48,7 +51,7 @@ class DataModule(pl.LightningDataModule):
         pass
 
     
-    def add_random_data(self, total_num):
+    def insert_random_data(self, total_num):
         domain_lower_bd, domain_upper_bd = self.system.domain_limits
         domain_bd_gap = domain_upper_bd - domain_lower_bd
 
@@ -65,6 +68,29 @@ class DataModule(pl.LightningDataModule):
             self.sql_database.insert_p_batch(s, s_gridding_gap, safe_mask_training, unsafe_mask_training, satisfied)
 
     def add_one_data(self, s, s_gridding_gap, safe_mask_training, unsafe_mask_training, satisfied):
+        self.point_list.append(self.TrainingPoint(s, s_gridding_gap, safe_mask_training, unsafe_mask_training, satisfied))
+        if len(self.point_list) >= self.sql_bandwith:
+            self.push_to_database()
+            self.point_list.clear()
+
+
+    def add_batch_data(self, s, s_gridding_gap, safe_mask_training, unsafe_mask_training, satisfied):
+        self.point_list.extend([self.TrainingPoint(s[i, :], s_gridding_gap[i, :], safe_mask_training[i, :], unsafe_mask_training[i, :], satisfied[i, :] ) for i in range(s.shape[0])])
+        if len(self.point_list) >= self.sql_bandwith:
+            self.push_to_database()
+            self.point_list.clear()
+
+    def push_to_database(self):
+        if len(self.point_list) > 0:
+            s = torch.stack([p.s for p in self.point_list])
+            s_gridding_gap = torch.stack([p.grid_gap for p in self.point_list])
+            safe_mask_training = torch.stack([p.nominal_safe_mask for p in self.point_list])
+            unsafe_mask_training = torch.stack([p.unsafe_mask for p in self.point_list])
+            satisfied = torch.stack([p.satisfied for p in self.point_list])
+
+            self.sql_database.insert_p_batch(s, s_gridding_gap, safe_mask_training, unsafe_mask_training, satisfied)
+
+    def insert_one_data(self, s, s_gridding_gap, safe_mask_training, unsafe_mask_training, satisfied):
         """
         Insert one point to the database
             s: torch.Tensor, shape (ns, )
@@ -75,7 +101,7 @@ class DataModule(pl.LightningDataModule):
         """
         self.sql_database.insert_p(s, s_gridding_gap, safe_mask_training, unsafe_mask_training, satisfied)
 
-    def add_batch_data(self, s, s_gridding_gap, safe_mask_training, unsafe_mask_training, satisfied):
+    def insert_batch_data(self, s, s_gridding_gap, safe_mask_training, unsafe_mask_training, satisfied):
         """
         Insert batch of points to the database
             s: torch.Tensor, shape (n, ns)

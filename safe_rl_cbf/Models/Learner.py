@@ -66,22 +66,48 @@ class Learner:
         self.train_data_module.set_training_points_num(training_points_num)
         self.train_data_module.set_batch_size(train_batch_size)
         self.train_data_module.reset()
+    
+
+    def pretrain(self, epochs=5):
         
+        self.model.pretrain = True
+        self.model.use_h0 = False
+        
+        if epochs > 0:
+            trainer = pl.Trainer(
+            accelerator = "gpu",
+            devices = 1,
+            max_epochs=epochs,
+            # callbacks=[ EarlyStopping(monitor="Total_loss/train", mode="min", check_on_train_epoch_end=True, strict=False, patience=20, stopping_threshold=1e-3) ], 
+            default_root_dir=self.log_dir,
+            reload_dataloaders_every_n_epochs=15,
+            accumulate_grad_batches=12,
+            )
+
+            torch.autograd.set_detect_anomaly(True)
+            trainer.fit(self.model, self.train_data_module.dataloader())
+
+            self.model.set_previous_cbf(self.model.h)
+
+
 
     def train(self, epochs=5):
-        
-        trainer = pl.Trainer(
-        accelerator = "gpu",
-        devices = 1,
-        max_epochs=epochs,
-        # callbacks=[ EarlyStopping(monitor="Total_loss/train", mode="min", check_on_train_epoch_end=True, strict=False, patience=20, stopping_threshold=1e-3) ], 
-        default_root_dir=self.log_dir,
-        reload_dataloaders_every_n_epochs=15,
-        accumulate_grad_batches=12,
-        )
 
-        torch.autograd.set_detect_anomaly(True)
-        trainer.fit(self.model, self.train_data_module.dataloader())
+        self.model.pretrain = False
+        self.model.use_h0 = True
+        if epochs > 0:
+            trainer = pl.Trainer(
+            accelerator = "gpu",
+            devices = 1,
+            max_epochs=epochs,
+            # callbacks=[ EarlyStopping(monitor="Total_loss/train", mode="min", check_on_train_epoch_end=True, strict=False, patience=20, stopping_threshold=1e-3) ], 
+            default_root_dir=self.log_dir,
+            reload_dataloaders_every_n_epochs=15,
+            accumulate_grad_batches=12,
+            )
+
+            torch.autograd.set_detect_anomaly(True)
+            trainer.fit(self.model, self.train_data_module.dataloader())
 
 
     def prepare_for_testing(self, testing_points_num = None , test_batch_size=None , test_index = None):
