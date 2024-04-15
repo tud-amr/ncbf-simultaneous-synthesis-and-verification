@@ -20,12 +20,12 @@ class BBVT:
                 initial_grid_gap = [0.5, 0.5],
                 minimum_grip_gap = 0.005,
                 verify_batch_size = 64,
-                visualize_index = [0, 1]
+                visualize_index = [0, 1],
                 ):
         self.model = model
         date = datetime.datetime.now().strftime("%d_%b")
         self.prefix = prefix
-        self.log_dir = os.path.join(log_dir, self.prefix + "_" + date) 
+        self.log_dir = os.path.join(log_dir, self.prefix) 
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
 

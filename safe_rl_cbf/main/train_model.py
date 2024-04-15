@@ -35,13 +35,22 @@ training_without_verification_epochs = config["hyperparameter"]["training_withou
 k = config["hyperparameter"]["k"]
 learning_rate = config["hyperparameter"]["learning_rate"]
 lambda_ = config["hyperparameter"]["lambda_"]
+gamma = config["hyperparameter"]["gamma"]
 
 if load_pretrained:
-    model = NeuralCBF.load_from_checkpoint(pretrained_model_path, dynamic_system=system, network_structure=network_structure, learning_rate=learning_rate, lambda_=lambda_)
+    model = NeuralCBF.load_from_checkpoint(pretrained_model_path, dynamic_system=system, network_structure=network_structure, learning_rate=learning_rate, gamma=gamma, lambda_=lambda_)
     model.set_previous_cbf(model.h)
    
 else:
+    pretraint_path = "saved_models/inverted_pendulum_umax_12/checkpoints/epoch=0-step=1.ckpt"
+    pre_network_structure= [
+            {"type": "Linear", "input_size": 2, "output_size": 32, "activation": "Tanh"},
+            {"type": "Linear", "input_size": 32, "output_size": 32, "activation": "Tanh"},
+            {"type": "Linear", "input_size": 32, "output_size": 1, "activation": "Linear"}
+        ]
     model = NeuralCBF(dynamic_system=system, network_structure=network_structure, learning_rate=learning_rate, lambda_=lambda_)
+    model_pretrained = NeuralCBF.load_from_checkpoint(pretraint_path, dynamic_system=system, network_structure=pre_network_structure, learning_rate=learning_rate, gamma=gamma, lambda_=lambda_)
+    model.h0 = model_pretrained.h
 
 #################  train and verify  #################
     

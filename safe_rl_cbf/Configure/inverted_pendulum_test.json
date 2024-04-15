@@ -1,10 +1,10 @@
 {
     "system": "InvertedPendulum",
     "constraints": "constraints_inverted_pendulum",
-    "prefix": "IP_pretrained",
+    "prefix": "test",
     "log_dir": "logs/CBF_logs",
     "load_pretrained": true,
-    "pretrained_model_path": "logs/CBF_logs/IP_pretrained_26_Feb/lightning_logs/version_9/checkpoints/epoch=9-step=140.ckpt",
+    "pretrained_model_path": "saved_models/inverted_pendulum_umax_12/checkpoints/epoch=0-step=1.ckpt",
     "hyperparameter":{
         "network_structure": [
             {"type": "Linear", "input_size": 2, "output_size": 32, "activation": "Tanh"},

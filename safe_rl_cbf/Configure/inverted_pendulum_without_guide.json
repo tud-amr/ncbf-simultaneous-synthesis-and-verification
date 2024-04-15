@@ -1,7 +1,7 @@
 {
     "system": "InvertedPendulum",
     "constraints": "constraints_inverted_pendulum",
-    "prefix": "IP_new",
+    "prefix": "IP_without_guide",
     "log_dir": "logs/CBF_logs",
     "load_pretrained": false,
     "pretrained_model_path": "saved_models/inverted_pendulum_stage_1/checkpoints/epoch=293-step=2646.ckpt",
@@ -19,11 +19,10 @@
         "testing_points_num": 1e5,
         "test_index": {"0": "None", "1": "None"},
         "test_batch_size": 1024,
-        "max_epochs": 30,
+        "max_epochs": 200,
         "training_without_verification_epochs": 30,
         "k": 10,
         "learning_rate": 1e-3,
-        "lambda_": 0.05,
-        "gamma": 0.5
+        "lambda_": 0.5
     }
 }

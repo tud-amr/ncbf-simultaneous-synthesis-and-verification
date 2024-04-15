@@ -87,7 +87,7 @@ class Learner:
             torch.autograd.set_detect_anomaly(True)
             trainer.fit(self.model, self.train_data_module.dataloader())
 
-            self.model.set_previous_cbf(self.model.h)
+            # self.model.set_previous_cbf(self.model.h)
 
 
 

@@ -11,9 +11,9 @@ from matplotlib.lines import Line2D
 import scipy.io as sio
 from scipy.interpolate import griddata
 
-from safe_rl_cbf.Models.NeuralCBF import *
-from safe_rl_cbf.Dynamics.dynamic_system_instances import car1, inverted_pendulum_1, cart_pole_1, dubins_car, dubins_car_acc, point_robot
-from safe_rl_cbf.Dataset.DataModule import DataModule
+from safe_rl_cbf.Models.common_header import *
+from safe_rl_cbf.Models.custom_header import *
+
 
 
 
@@ -26,10 +26,10 @@ x_index = 0
 y_index = 1
 
 ##################### read data #######################
-system = inverted_pendulum_1    
+system = select_dynamic_system("InvertedPendulum", "constraints_inverted_pendulum")    
 
-neural_clbf_test_results = torch.load("neural_clbf_test_results.pt")
-optimal_ncbf_test_results = torch.load("test_results.pt")
+without_guide_test_results = torch.load("logs/CBF_logs/IP_without_guide_08_Mar/test_results.pt")
+optimal_ncbf_test_results = torch.load("logs/CBF_logs/test/test_results.pt")
 
 domain_limit_lb, domain_limit_ub = system.domain_limits
 
@@ -43,12 +43,12 @@ descent_violation = []
 
 inadmissible_boundary_state = []
 
-for batch_id in range(len(neural_clbf_test_results)):
-    h_shape_s.append(neural_clbf_test_results[batch_id]["shape_h"]["state"])
-    h_shape_val.append(neural_clbf_test_results[batch_id]["shape_h"]["val"])
-    s_unsafe_violation.append(neural_clbf_test_results[batch_id]["unsafe_violation"]["state"])
-    descent_violation.append(neural_clbf_test_results[batch_id]["descent_violation"]["state"])
-    inadmissible_boundary_state.append(neural_clbf_test_results[batch_id]["inadmissible_boundary"]["state"])
+for batch_id in range(len(without_guide_test_results)):
+    h_shape_s.append(without_guide_test_results[batch_id]["shape_h"]["state"])
+    h_shape_val.append(without_guide_test_results[batch_id]["shape_h"]["val"])
+    s_unsafe_violation.append(without_guide_test_results[batch_id]["unsafe_violation"]["state"])
+    descent_violation.append(without_guide_test_results[batch_id]["descent_violation"]["state"])
+    inadmissible_boundary_state.append(without_guide_test_results[batch_id]["inadmissible_boundary"]["state"])
    
 h_shape_s_neural_clbf = torch.vstack(h_shape_s)
 h_shape_val_neural_clbf = torch.vstack(h_shape_val)
@@ -95,7 +95,6 @@ hVS_ZData = mat_contents['a2']
 hVS0_XData = mat_contents['a3']
 hVS0_YData = mat_contents['a4']
 hVS0_ZData = mat_contents['a5']
-
 ########################## start to plot #############################
 
 ############################### plot shape of function h(x) ##############################
@@ -134,27 +133,24 @@ X_admissible_area = admissible_area_state_ncbf[:, x_index].detach().cpu().numpy(
 Y_admissible_area = admissible_area_state_ncbf[:, y_index].detach().cpu().numpy()
 plt.scatter(X_admissible_area, Y_admissible_area, s=1, c='#B2EAAB')
 
+
 # Create contour lines or level curves using matpltlib.pyplt module
 
-x = np.linspace(min(hVS_XData.flatten()), max(hVS_XData.flatten()), 1000)
-y = np.linspace(min(hVS_YData.flatten()), max(hVS_YData.flatten()), 1000)
-xi, yi = np.meshgrid(x, y)
+# x = np.linspace(min(hVS_XData.flatten()), max(hVS_XData.flatten()), 1000)
+# y = np.linspace(min(hVS_YData.flatten()), max(hVS_YData.flatten()), 1000)
+# xi, yi = np.meshgrid(x, y)
 
-zi = griddata((hVS_XData.flatten(), hVS_YData.flatten()), hVS_ZData.flatten(), (xi, yi), method='cubic')
+# zi = griddata((hVS_XData.flatten(), hVS_YData.flatten()), hVS_ZData.flatten(), (xi, yi), method='cubic')
 
-LST_x = []
-LST_y = []
+# LST_x = []
+# LST_y = []
 
-for i in range(xi.shape[0]-1):
-    for j in range(xi.shape[1]-1):
-        if zi[i,j] > 0:
-            LST_x.append(xi[i,j])
-            LST_y.append(yi[i,j])
-plt.scatter(LST_x, LST_y, s=1, c='#F0B2E1')
-
-# contours = plt.contourf(hVS_XData, hVS_YData, hVS_ZData, levels=[-0.1, 0, 1], colors=['w','#a7f790','w'], extend='both')
-
-# contours2 = plt.contour(hVS0_XData, hVS0_YData, hVS0_ZData, levels=[0], colors='grey', linewidth=5)
+# for i in range(xi.shape[0]-1):
+#     for j in range(xi.shape[1]-1):
+#         if zi[i,j] > 0:
+#             LST_x.append(xi[i,j])
+#             LST_y.append(yi[i,j])
+#  plt.scatter(LST_x, LST_y, s=1, c='#F0B2E1')
 
 
 plt.scatter(x_ncbf, y_ncbf, s=1, c='#3171AD')
@@ -178,10 +174,8 @@ legend_elements = [
                         label='Inadmissible'),
                     Patch(facecolor='#B2EAAB', edgecolor='#B2EAAB',
                         label='Admissible'),
-                    Patch(facecolor='#F0B2E1', edgecolor='#F0B2E1',
-                        label='LST'),
                     Patch(facecolor='#EAE159', edgecolor='#EAE159',
-                        label='NeuralCLBF'),
+                        label='Ours_without_guide'),
                     Patch(facecolor='#3171AD', edgecolor='#3171AD',
                         label='Ours')
                 ]
@@ -193,4 +187,4 @@ plt.ylabel(r"$\dot{\theta}$ (rad/s)", fontsize="15")
 plt.xticks(fontsize="15")
 plt.yticks(fontsize="15")
 
-plt.savefig("fig/prove_optimality.png", dpi=300)
+plt.savefig("fig/compare_guide.png", dpi=300)

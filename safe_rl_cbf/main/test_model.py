@@ -3,8 +3,14 @@ from safe_rl_cbf.Models.custom_header import *
 from safe_rl_cbf.Models.BBVT import BBVT
 
 
+parser = argparse.ArgumentParser(description='Train a neural network')
+
+parser.add_argument('--config_file', type=str, default="inverted_pendulum_pretrained.json", help='please type the config file name in folder safe_rl_cbf/Configure')
+
+args = parser.parse_args()
+
 ############### config file ################
-config_file = "inverted_pendulum_test.json"
+config_file = args.config_file
 
 #################  unpack configurations  #################
 config = read_config( os.path.join("safe_rl_cbf/Configure" ,config_file) )
@@ -33,7 +39,7 @@ lambda_ = config["hyperparameter"]["lambda_"]
 
 if load_pretrained:
     model = NeuralCBF.load_from_checkpoint(pretrained_model_path, dynamic_system=system, network_structure=network_structure, learning_rate=learning_rate, lambda_=lambda_)
-    model.set_previous_cbf(model.h)
+    # model.set_previous_cbf(model.h)
    
 else:
     model = NeuralCBF(dynamic_system=system, network_structure=network_structure, learning_rate=learning_rate, lambda_=lambda_)
@@ -46,7 +52,7 @@ print(f"Using {device} device")
 
 #################  test  #################
     
-bbvt = BBVT(model=model, prefix=config["prefix"] , log_dir=log_dir, 
+bbvt = BBVT(model=model, prefix=prefix , log_dir=log_dir, 
             training_points_num=training_points_num, train_batch_size=train_batch_size,
             testing_points_num=testing_points_num, test_batch_size=test_batch_size, test_index=test_index,
             initial_grid_gap=initial_grid_gap, verify_batch_size=verify_batch_size, minimum_grip_gap=minimum_grid_gap)

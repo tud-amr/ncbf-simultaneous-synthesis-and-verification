@@ -11,8 +11,8 @@ class NeuralCBF(pl.LightningModule):
         dynamic_system: ControlAffineSystem,
         network_structure: List,
         learning_rate: float = 1e-3,
-        gamma: float = 0.9,
-        lambda_: float = 0.5,
+        gamma: float = 0.5,
+        lambda_: float = 0.05,
         ):
 
         super(NeuralCBF, self).__init__()
@@ -42,7 +42,29 @@ class NeuralCBF(pl.LightningModule):
                     pass
 
         self.param_init(self.h)
-        self.h0 = copy.deepcopy(self.h)
+
+        # self.h0 = copy.deepcopy(self.h)
+        network_structure0 = [
+            {"type": "Linear", "input_size": 2, "output_size": 32, "activation": "Tanh"},
+            {"type": "Linear", "input_size": 32, "output_size": 32, "activation": "Tanh"},
+            {"type": "Linear", "input_size": 32, "output_size": 1, "activation": "Linear"}
+        ]
+        self.h0 = nn.Sequential()
+        for level, layer in enumerate(network_structure0):
+            if layer["type"] == "Linear":
+                self.h0.add_module(str(level*2), nn.Linear(layer["input_size"], layer["output_size"]))
+                if layer["activation"] == "ReLU":
+                    self.h0.add_module(str(level*2+1), nn.ReLU())
+                elif layer["activation"] == "Softmax":
+                    self.h0.add_module(str(level*2+1), nn.Softmax(dim=1))
+                elif layer["activation"] == "Tanh":
+                    self.h0.add_module(str(level*2+1), nn.Tanh())
+                elif layer["activation"] == "Sigmoid":
+                    self.h0.add_module(str(level*2+1), nn.Sigmoid())
+                else:
+                    pass
+        
+
         
         # generate control vertices
         self.u_v = self.dynamic_system.control_vertices
@@ -250,12 +272,12 @@ class NeuralCBF(pl.LightningModule):
         # sovlve convex relaxation problem
         # J, dx, X, h= self._solve_convex_relataxion(lb_j, ub_j, lb_dx, ub_dx, lb_h, ub_h, lb_j_lb_dx, ub_j_ub_dx, lb_j_ub_dx, ub_j_lb_dx)
 
-        # q_min = torch.sum(X, dim=1, keepdim=True) + self.lambda_ * h
+        # q_min = torch.sum(X, dim=1, keepdim=True) + self.gamma * h
 
-        q_min_1 = torch.sum(lb_j_lb_dx, dim=1, keepdim=True) + self.lambda_ * lb_h
-        q_min_2 = torch.sum(ub_j_ub_dx, dim=1, keepdim=True) + self.lambda_ * lb_h
-        q_min_3 = torch.sum(lb_j_ub_dx, dim=1, keepdim=True) + self.lambda_ * lb_h
-        q_min_4 = torch.sum(ub_j_lb_dx, dim=1, keepdim=True) + self.lambda_ * lb_h
+        q_min_1 = torch.sum(lb_j_lb_dx, dim=1, keepdim=True) + self.gamma * lb_h
+        q_min_2 = torch.sum(ub_j_ub_dx, dim=1, keepdim=True) + self.gamma * lb_h
+        q_min_3 = torch.sum(lb_j_ub_dx, dim=1, keepdim=True) + self.gamma * lb_h
+        q_min_4 = torch.sum(ub_j_lb_dx, dim=1, keepdim=True) + self.gamma * lb_h
 
         q_min = torch.min(torch.min(q_min_1, q_min_2), torch.min(q_min_3, q_min_4))
         
@@ -287,7 +309,7 @@ class NeuralCBF(pl.LightningModule):
         # Compute loss to encourage satisfaction of the following conditions...
         loss = []
 
-        baseline = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values.detach() - 0.1
+        baseline = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values.detach() - self.lambda_
 
         u_max, d_min = self.get_control_disturb_vertices(s)
      
@@ -330,7 +352,7 @@ class NeuralCBF(pl.LightningModule):
          
         #####################################################
         
-        baseline = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values.detach() - 0.1
+        baseline = torch.min(self.dynamic_system.state_constraints(s), dim=1, keepdim=True).values.detach() - self.lambda_
         
         value_fun_violation = (baseline -  hs) * 1
         
@@ -372,7 +394,7 @@ class NeuralCBF(pl.LightningModule):
                 
         Vdot = Vdot.reshape(hs.shape)
 
-        decent_violation_lin = Vdot + self.lambda_ * hs - 0.5
+        decent_violation_lin = Vdot + self.gamma * hs - self.lambda_
 
         cbvf_vi_loss, index_min = torch.min(torch.hstack([value_fun_violation, decent_violation_lin]), dim=1)
 
@@ -387,7 +409,7 @@ class NeuralCBF(pl.LightningModule):
         # x_next = self.dynamic_system.step(s, u_max)
         # H_next = self.h(x_next)
         # violation = F.relu(
-        #     - ((H_next - hs) / self.dynamic_system.dt + self.lambda_ * hs)
+        #     - ((H_next - hs) / self.dynamic_system.dt + self.gamma * hs)
         # )
         # violation = coefficients_hji_descent_loss * violation # * condition_active
 
@@ -492,11 +514,11 @@ class NeuralCBF(pl.LightningModule):
         """
         # To find the control input, we want to solve a QP constrained by
         #
-        # -(L_f V + L_g V u + lambda V) <= 0
+        # -(L_f V + L_g V u + gamma V) <= 0
         #
         # To ensure that this QP is always feasible, we relax the constraint
         #
-        #  -(L_f V + L_g V u + lambda V) - r <= 0
+        #  -(L_f V + L_g V u + gamma V) - r <= 0
         #                              r >= 0
         #
         # and add the cost term relaxation_penalty * r.
@@ -556,7 +578,7 @@ class NeuralCBF(pl.LightningModule):
                     Lg_V_np = Lg_V[batch_idx, :].detach().cpu().numpy()
                     Lf_V_np = Lf_V[batch_idx, 0].detach().cpu().numpy()
                     V_np = V[batch_idx, 0].detach().cpu().numpy()
-                    clf_constraint = -(Lf_V_np + Lg_V_np @ u + self.lambda_ * V_np - epsilon)
+                    clf_constraint = -(Lf_V_np + Lg_V_np @ u + self.gamma * V_np - epsilon)
                     if allow_relaxation:
                         clf_constraint -= r[0]
                     model.addConstr(clf_constraint <= 0.0, name=f"Scenario {0} Decrease")
@@ -656,7 +678,7 @@ class NeuralCBF(pl.LightningModule):
         h = self.h(s)
         dh = self.Dh(s, u_vi)
 
-        result = dh + self.lambda_ * h
+        result = dh + self.gamma * h
         
         return result
 
