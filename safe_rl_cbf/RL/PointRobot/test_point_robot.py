@@ -2,7 +2,7 @@ import numpy as np
 from stable_baselines3 import PPO
 import torch
 
-from safe_rl_cbf.RL.PointRobot.point_robot_env import PointRobotEnv
+from safe_rl_cbf.RL.PointRobot.PointRobotEnv import PointRobotEnv
 from safe_rl_cbf.Models.NeuralCBF import NeuralNetwork
 from safe_rl_cbf.Dynamics.dynamic_system_instances import dubins_car, point_robot
 from safe_rl_cbf.Dataset.TrainingDataModule import TrainingDataModule

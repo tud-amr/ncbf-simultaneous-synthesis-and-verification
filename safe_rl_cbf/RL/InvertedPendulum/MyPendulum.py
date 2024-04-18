@@ -71,7 +71,7 @@ class MyPendulumEnv(gym.Env):
         "render_fps": 30,
     }
     _np_random: Optional[np.random.Generator] = None
-    def __init__(self, render_mode: Optional[str] = None, g=9.81, with_CBF=False):
+    def __init__(self, render_sim: Optional[str] = None, g=9.81, with_CBF=False):
         super().__init__()
         
         self.with_CBF = with_CBF
@@ -89,7 +89,7 @@ class MyPendulumEnv(gym.Env):
         self.max_time_steps = 1500
 
 
-        self.render_mode = render_mode
+        self.render_mode = render_sim
 
         self.screen_dim = 500
         self.screen = None
@@ -112,6 +112,8 @@ class MyPendulumEnv(gym.Env):
 
     def set_barrier_function(self, h):
         self.h = h
+        self.prefix = "with_CBF_" 
+        self.with_CBF = True
 
     def step(self, action):
         start_time = time.time()
@@ -179,7 +181,7 @@ class MyPendulumEnv(gym.Env):
         
         is_unsafe = self.h.dynamic_system.unsafe_mask(torch.from_numpy(self.state).float().reshape((-1, 2)).to(self.h.device))
         
-        if is_unsafe[0]:
+        if is_unsafe:
             # print("collision with obstacle!!!!!!!!!!!!")
             self.done = True
             costs += 15

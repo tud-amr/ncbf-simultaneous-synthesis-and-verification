@@ -26,6 +26,7 @@ from torch.nn.parameter import Parameter
 from torch.optim.lr_scheduler import ExponentialLR, CosineAnnealingLR
 from torch.autograd import grad
 from torch.utils.data import Dataset, DataLoader
+from stable_baselines3 import PPO
 
 import cvxpy as cp
 from cvxpylayers.torch import CvxpyLayer

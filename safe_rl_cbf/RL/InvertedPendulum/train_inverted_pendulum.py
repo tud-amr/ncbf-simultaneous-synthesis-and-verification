@@ -14,13 +14,12 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.results_plotter import load_results, ts2xy
 
 # import CBF
-from safe_rl_cbf.Models.NeuralCBF import NeuralNetwork
-from safe_rl_cbf.Dynamics.dynamic_system_instances import inverted_pendulum_1
-from safe_rl_cbf.Dataset.TrainingDataModule import TrainingDataModule
+from safe_rl_cbf.Models.custom_header import *
 
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using {device} device")
+
 
 
 for i in range(0, 1):

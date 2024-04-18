@@ -42,15 +42,9 @@ class NeuralCBF(pl.LightningModule):
                     pass
 
         self.param_init(self.h)
-
-        # self.h0 = copy.deepcopy(self.h)
-        network_structure0 = [
-            {"type": "Linear", "input_size": 2, "output_size": 32, "activation": "Tanh"},
-            {"type": "Linear", "input_size": 32, "output_size": 32, "activation": "Tanh"},
-            {"type": "Linear", "input_size": 32, "output_size": 1, "activation": "Linear"}
-        ]
+        
         self.h0 = nn.Sequential()
-        for level, layer in enumerate(network_structure0):
+        for level, layer in enumerate(network_structure):
             if layer["type"] == "Linear":
                 self.h0.add_module(str(level*2), nn.Linear(layer["input_size"], layer["output_size"]))
                 if layer["activation"] == "ReLU":
@@ -79,6 +73,7 @@ class NeuralCBF(pl.LightningModule):
 
     def set_previous_cbf(self, h):
         self.h0.load_state_dict(h.state_dict())
+        self.use_h0 = True
         
     def forward(self, s):
         hs = self.h(s)

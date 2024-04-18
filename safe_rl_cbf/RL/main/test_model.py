@@ -40,7 +40,7 @@ bbvt = BBVT(model=model, prefix=prefix , log_dir=log_dir,
             testing_points_num=testing_points_num, test_batch_size=test_batch_size, test_index=test_index,
             )
 
-bbvt.learner.prepare_for_testing()
+bbvt.prepare_data()
 
 bbvt.test()
 bbvt.draw_figures()

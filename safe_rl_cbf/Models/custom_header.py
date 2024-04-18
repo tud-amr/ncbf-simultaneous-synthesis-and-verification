@@ -35,8 +35,8 @@ def select_dynamic_system(system_name, constraints_name):
         
         system = InvertedPendulum(m=1, b=0.1)
 
-    elif system_name == "DubinsCar":
-        system = DubinsCar()
+    elif system_name == "PointRobot":
+        system = PointRobot()
     
     else:
         pass
@@ -62,3 +62,15 @@ def select_dynamic_system(system_name, constraints_name):
     system.set_state_constraints(rou)
 
     return system
+
+def select_RL_env(system_name):
+    if system_name == "InvertedPendulum":
+        from safe_rl_cbf.RL.InvertedPendulum.MyPendulum import MyPendulumEnv
+        from safe_rl_cbf.RL.InvertedPendulum.inverted_pendulum_callback import CustomCallback
+        return MyPendulumEnv, CustomCallback
+    elif system_name == "PointRobot":
+        from safe_rl_cbf.RL.PointRobot.PointRobotEnv import PointRobotEnv
+        from safe_rl_cbf.RL.PointRobot.point_robot_callback import CustomCallback
+        return PointRobotEnv, CustomCallback
+    else:
+        pass
