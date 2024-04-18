@@ -1,7 +1,7 @@
 {
     "system": "InvertedPendulum",
     "constraints": "constraints_inverted_pendulum",
-    "prefix": "IP_15_April",
+    "prefix": "IP_18_April",
     "log_dir": "logs/CBF_logs",
     "network_structure": [
         {"type": "Linear", "input_size": 2, "output_size": 32, "activation": "Tanh"},
@@ -28,7 +28,7 @@
     },
 
     "test": {
-        "model_path": "logs/CBF_logs/IP_15_April/lightning_logs/version_6/checkpoints/epoch=9-step=570.ckpt",
+        "model_path": "logs/CBF_logs/IP_18_April/lightning_logs/version_6/checkpoints/epoch=2-step=147.ckpt",
         "hyperparameter":{
             "testing_points_num": 1e5,
             "test_index": {"0": "None", "1": "None"},
@@ -37,6 +37,7 @@
     },
     
     "RL": {
-        "model_path": "saved_models/inverted_pendulum_umax_12/checkpoints/epoch=0-step=1.ckpt"
+        "cbf_model_path": "logs/CBF_logs/IP_18_April/lightning_logs/version_6/checkpoints/epoch=2-step=147.ckpt",
+        "rl_model_path": "logs/CBF_logs/IP_18_April/with_CBF.zip"
     }
 }

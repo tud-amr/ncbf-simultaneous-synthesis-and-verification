@@ -600,64 +600,6 @@ class NeuralCBF(pl.LightningModule):
 
         return u_result.type_as(x), r_result.type_as(x)
 
-    def _solve_CLF_QP_OptNet(self,
-        x: torch.Tensor,
-        u_ref: torch.Tensor,
-        V: torch.Tensor,
-        Lf_V: torch.Tensor,
-        Lg_V: torch.Tensor,
-        relaxation_penalty: float,
-        epsilon : float = 0.1,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-
-        bs = x.shape[0]
-        nu = self.dynamic_system.nu
-        nv = nu + 1
-        nieq = 4
-
-        u_min, u_max = self.dynamic_system.control_limits
-
-        diag_Q =  torch.ones(nv).float().to(x.device)
-        diag_Q[-1] = 1000  # 2 * torch.Tensor([1, 1000]).float().to(x.device)
-        Q = torch.diag(diag_Q).reshape(nv, nv)
-        Q = Variable(Q.expand(bs, nv, nv))
-        # print(f"Q shape is {Q.shape} \n")
-
-        p = Variable(torch.zeros(bs, nv).float().to(x.device))
-        # print(f"u_ref shape is {u_ref.shape}")
-        p[:, 0] = -2 * u_ref.squeeze(-1)
-        # print(f"p shape is {p.shape} \n")
-
-        # print(f"Lf_h shape is {Lf_V.shape}")
-        # print(f"Lg_h shape is {Lg_V.shape}")
-        
-        G = Variable(torch.zeros(bs, nieq, nv).to(x.device))
-        G[:, 0, 0:nu] = -Lg_V
-        G[:, 0, nu:nv] = -1
-        G[:, 1, 0:nu] = -1
-        G[:, 2, 0:nu] = 1
-        G[:, 3, nu:nv] = -1
-        # print(f"G shape is {G.shape}")
-        # print(f"Lg_V is {Lg_V}")
-        # print(f"G is {G}")
-
-        h = Variable(torch.zeros(bs, nieq).to(x.device))
-        h[:, 0] = Lf_V.squeeze(-1) + 0.5 * V.squeeze(-1) - epsilon
-        h[:, 1] = -u_min
-        h[:, 2] = u_max
-        h[:, 3] = 0
-        # print(f"h shape is {h.shape}")
-        # print(f"h is {h}")
-
-        e = Variable(torch.Tensor())
-
-        u_delta = QPFunction(verbose=0)(Q, p, G, h, e, e)
-        # print(f"u_delta shape is {u_delta.shape}")
-        # print(f"u_delta is {u_delta}")
-        
-        return u_delta[:, 0:1], u_delta[:, 1:2]
-    
-
     def Dh(self, s, u_vi):
         hs = self.h(s)
         gradh = self.jacobian(hs, s)
@@ -965,8 +907,6 @@ class NeuralCBF(pl.LightningModule):
         
         print_info(f"results is save to {save_dir}")
         
-
-
     def configure_optimizers(self):
         clbf_params = list(self.h.parameters()) # list(self.g.parameters())
         clbf_opt = torch.optim.SGD(
@@ -977,46 +917,6 @@ class NeuralCBF(pl.LightningModule):
         self.opt_idx_dict = {0: "clbf"}
 
         return {"optimizer":clbf_opt, "lr_scheduler": lr_scheduler}
-
-
-
-if __name__ == "__main__":
-
-    
-    current_date_str = datetime.datetime.now().strftime("%d_%b")
-
-    train_mode = 0
-    system = inverted_pendulum_1
-    default_root_dir = "logs/CBF_logs/IP_" + current_date_str
-    checkpoint_dir = "saved_models/inverted_pendulum_stage_1/checkpoints/epoch=293-step=2646.ckpt"
-
-    grid_gap = torch.Tensor([0.2, 0.2])  
-
-    ########################## start training ###############################
-
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    print('Using {} device'.format(device))
-
-    data_module = TrainingDataModule(system=system, val_split=0, train_batch_size=1024, training_points_num=int(5e5), train_mode=train_mode)
-
-    NN = NeuralCBF(dynamic_system=system, data_module=data_module, train_mode=train_mode)
-    NN0 = NeuralCBF.load_from_checkpoint(checkpoint_dir,dynamic_system=system, data_module=data_module)
-    NN.set_previous_cbf(NN0.h)
-
-    trainer = pl.Trainer(
-        accelerator = "gpu",
-        devices = 1,
-        max_epochs=50,
-        # callbacks=[ EarlyStopping(monitor="Total_loss/train", mode="min", check_on_train_epoch_end=True, strict=False, patience=20, stopping_threshold=1e-3) ], 
-        # callbacks=[StochasticWeightAveraging(swa_lrs=1e-2)],
-        default_root_dir=default_root_dir,
-        reload_dataloaders_every_n_epochs=15,
-        accumulate_grad_batches=12,
-        # gradient_clip_val=0.5
-        )
-
-    torch.autograd.set_detect_anomaly(True)
-    trainer.fit(NN)
 
 
 

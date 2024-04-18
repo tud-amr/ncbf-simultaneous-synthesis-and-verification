@@ -22,7 +22,7 @@ log_dir = config["log_dir"]
 network_structure = config["network_structure"]
 gamma = config["gamma"]
 
-cbf_model_dir = config["RL"]["model_path"]
+cbf_model_dir = config["RL"]["cbf_model_path"]
 
 
 

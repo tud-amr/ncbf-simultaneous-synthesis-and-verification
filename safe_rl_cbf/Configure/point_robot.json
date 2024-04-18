@@ -38,6 +38,7 @@
     },
     
     "RL": {
-        "model_path": "saved_models/point_robot/checkpoints/epoch=4-step=20.ckpt"
+        "model_path": "saved_models/point_robot/checkpoints/epoch=4-step=20.ckpt",
+        "rl_model_path": ""
     }
 }
