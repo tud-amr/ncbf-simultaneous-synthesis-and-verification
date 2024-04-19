@@ -37,7 +37,7 @@ cd ncbf-simultaneous-synthesis-and-verification
 python -m pip install -e .
 ```
 
-## Repulicate 
+## Replicate 
 
 ### Inverted Pendulum
 0. Configuration
