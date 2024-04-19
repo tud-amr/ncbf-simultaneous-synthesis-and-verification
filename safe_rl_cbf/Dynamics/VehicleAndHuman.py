@@ -6,7 +6,6 @@ import torch.nn.functional as F
 import lightning.pytorch as pl
 
 import numpy as np
-import control
 
 from safe_rl_cbf.Dynamics.control_affine_system import ControlAffineSystem
 

@@ -32,10 +32,10 @@ import cvxpy as cp
 from cvxpylayers.torch import CvxpyLayer
 import gurobipy as gp
 from gurobipy import GRB
-from qpth.qp import QPFunction
+# from qpth.qp import QPFunction
 
-from auto_LiRPA import BoundedModule, BoundedTensor
-from auto_LiRPA.perturbations import *
+# from auto_LiRPA import BoundedModule, BoundedTensor
+# from auto_LiRPA.perturbations import *
 from collections import defaultdict
 
 from matplotlib import cm
