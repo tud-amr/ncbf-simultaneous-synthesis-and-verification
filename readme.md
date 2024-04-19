@@ -50,7 +50,7 @@ python -m pip install -e .
     python3 safe_rl_cbf/main/train_model.py --config_file inverted_pendulum.json
     ```
 
-2. Test nCBF (repulicate Fig. 4 )
+2. Test nCBF (replicate Fig. 4 )
 
     ```bash
     python3 safe_rl_cbf/main/test_model.py --config_file inverted_pendulum.json
@@ -78,13 +78,13 @@ python -m pip install -e .
     python3 safe_rl_cbf/main/train_model.py --config_file point_robot.json
     ```
 
-2. Test nCBF (repulicate Fig. 6d)
+2. Test nCBF (replicate Fig. 6d)
 
     ```bash
     python3 safe_rl_cbf/main/test_model.py --config_file point_robot.json
     ```
 
-3. Safe Learning (repulicate Fig. 6a and Fig. 6b)
+3. Safe Learning (replicate Fig. 6a and Fig. 6b)
 
     Training
     ```bash
