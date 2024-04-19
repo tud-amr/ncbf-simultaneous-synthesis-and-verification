@@ -87,7 +87,7 @@ class Learner:
             torch.autograd.set_detect_anomaly(True)
             trainer.fit(self.model, self.train_data_module.dataloader())
 
-            self.model.set_previous_cbf(self.model.h)
+        self.model.set_previous_cbf(self.model.h)
 
 
 
@@ -120,7 +120,7 @@ class Learner:
 
         assert test_batch_size is not None or self.test_batch_size is not None, "Please specify the batch size"
         test_batch_size = test_batch_size if test_batch_size is not None else self.test_batch_size
-
+        print( colored(str(testing_points_num), "blue") )
         self.test_data_module.set_testing_points_num(testing_points_num)
         self.test_data_module.set_batch_size(test_batch_size)
         self.test_data_module.set_test_index(test_index)

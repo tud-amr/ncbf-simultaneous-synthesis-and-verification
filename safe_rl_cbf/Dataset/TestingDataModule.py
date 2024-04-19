@@ -28,7 +28,7 @@ class TestingDataModule(DataModule):
 
         # generate testing data
         s_test_grid_list = []
-        num_each_dim = int(self.testing_points_num ** (1/self.system.ns))
+        num_each_dim = int(self.testing_points_num ** (1/2))
 
         for key, value in self.test_index.items():
             key = int(key)

@@ -1,0 +1,43 @@
+{
+    "system": "InvertedPendulum",
+    "constraints": "constraints_inverted_pendulum",
+    "prefix": "IP_18_April",
+    "log_dir": "logs/CBF_logs",
+    "network_structure": [
+        {"type": "Linear", "input_size": 2, "output_size": 32, "activation": "Tanh"},
+        {"type": "Linear", "input_size": 32, "output_size": 32, "activation": "Tanh"},
+        {"type": "Linear", "input_size": 32, "output_size": 1, "activation": "Linear"}
+    ],
+    "gamma": 0.5,
+
+    "train": {
+        "load_pretrained": false,
+        "pretrained_model_path": "saved_models/inverted_pendulum_stage_1/checkpoints/epoch=293-step=2646.ckpt",
+        "hyperparameter":{
+            "training_points_num": 5e5,
+            "train_batch_size": 1024,
+            "initial_grid_gap": [0.5, 0.5],
+            "verify_batch_size": 1024,
+            "minimum_grid_gap": 0.01,
+            "max_epochs": 100,
+            "training_without_verification_epochs": 30,
+            "k": 10,
+            "learning_rate": 1e-3,
+            "lambda_": 0.05
+        }
+    },
+
+    "test": {
+        "model_path": "saved_models/inverted_pendulum_umax_12/checkpoints/epoch=0-step=1.ckpt",
+        "hyperparameter":{
+            "testing_points_num": 1e5,
+            "test_index": {"0": "None", "1": "None"},
+            "test_batch_size": 1024
+        }
+    },
+    
+    "RL": {
+        "cbf_model_path": "logs/CBF_logs/IP_18_April/lightning_logs/version_6/checkpoints/epoch=2-step=147.ckpt",
+        "rl_model_path": "logs/CBF_logs/IP_18_April/with_CBF.zip"
+    }
+}

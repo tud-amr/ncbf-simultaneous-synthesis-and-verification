@@ -40,7 +40,7 @@ def draw_circle(center, radius, color, alpha):
     circle = plt.Circle(center, radius, color=color, alpha=alpha)
     plt.gca().add_patch(circle)
 
-with open('logs/stable_baseline_logs_20_Oct/point_robot_with/run3/with_CBF_trajectory.pickle', 'rb') as f:
+with open('logs/CBF_logs/PR_17_April/with_CBF_trajectory.pickle', 'rb') as f:
     # The protocol version used is detected automatically, so we do not
     # have to specify it.
     data = pickle.load(f)

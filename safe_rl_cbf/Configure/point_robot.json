@@ -1,0 +1,44 @@
+{
+    "system": "PointRobot",
+    "constraints": "constraints_point_robot",
+    "prefix": "PR_17_April",
+    "log_dir": "logs/CBF_logs",
+    "network_structure": [
+        {"type": "Linear", "input_size": 4, "output_size": 256, "activation": "Tanh"},
+        {"type": "Linear", "input_size": 256, "output_size": 256, "activation": "Tanh"},
+        {"type": "Linear", "input_size": 256, "output_size": 256, "activation": "Tanh"},
+        {"type": "Linear", "input_size": 256, "output_size": 1, "activation": "Linear"}
+    ],
+    "gamma": 0.5,
+
+    "train": {
+        "load_pretrained": false,
+        "pretrained_model_path": "saved_models/inverted_pendulum_stage_1/checkpoints/epoch=293-step=2646.ckpt",
+        "hyperparameter":{
+            "training_points_num": 1e6,
+            "train_batch_size": 1024,
+            "initial_grid_gap": [0.6, 0.6, 0.2, 0.2],
+            "verify_batch_size": 1024,
+            "minimum_grid_gap": 0.01,
+            "max_epochs": 100,
+            "training_without_verification_epochs": 30,
+            "k": 10,
+            "learning_rate": 1e-3,
+            "lambda_": 0.05
+        }
+    },
+
+    "test": {
+        "model_path": "saved_models/point_robot/checkpoints/epoch=4-step=20.ckpt",
+        "hyperparameter":{
+            "testing_points_num": 1e5,
+            "test_index": {"0": "None", "1": "None", "2": 0.2, "3": 0.2},
+            "test_batch_size": 1024
+        }
+    },
+    
+    "RL": {
+        "model_path": "saved_models/point_robot/checkpoints/epoch=4-step=20.ckpt",
+        "rl_model_path": ""
+    }
+}

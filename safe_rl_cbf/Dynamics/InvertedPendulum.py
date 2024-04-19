@@ -6,7 +6,6 @@ import torch.nn.functional as F
 import lightning.pytorch as pl
 
 import numpy as np
-import control
 
 from safe_rl_cbf.Dynamics.control_affine_system import ControlAffineSystem
 
@@ -50,13 +49,6 @@ class InvertedPendulum(ControlAffineSystem):
         self.L = L
         self.b = b
         self.gravity = 9.81
-
-        A = np.array([[0, 1], [0, -self.b/(self.m * self.L**2)]]).reshape((2,2))
-        B = np.array([0, 1/(self.m * self.L **2)]).reshape((self.ns, self.nu))
-        Q = np.eye(self.ns)
-        R = np.eye(self.nu)
-        K, _, _ = control.lqr(A, B, Q, R)
-        self.K_lqr = torch.from_numpy(K).float() * 2
 
     def f(self, s: torch.Tensor) -> torch.Tensor:
         batch_size = s.shape[0]

@@ -2,7 +2,7 @@ from stable_baselines3 import PPO
 import gym
 import os 
 from safe_rl_cbf.RL.PointRobot.point_robot_callback import CustomCallback
-from safe_rl_cbf.RL.PointRobot.point_robot_env import PointRobotEnv
+from safe_rl_cbf.RL.PointRobot.PointRobotEnv import PointRobotEnv
 import torch
 from safe_rl_cbf.Models.NeuralCBF import NeuralNetwork
 from safe_rl_cbf.Dynamics.dynamic_system_instances import dubins_car, point_robot

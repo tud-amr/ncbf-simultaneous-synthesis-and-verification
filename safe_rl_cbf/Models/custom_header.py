@@ -12,17 +12,8 @@ from safe_rl_cbf.Dataset.SqlDataSet import SqlDataSet
 from safe_rl_cbf.Models.NeuralCBF import NeuralCBF
 
 from safe_rl_cbf.Dynamics.control_affine_system import ControlAffineSystem
-from safe_rl_cbf.Dynamics.Car import Car
 from safe_rl_cbf.Dynamics.InvertedPendulum import InvertedPendulum
-from safe_rl_cbf.Dynamics.CartPole import CartPole
-from safe_rl_cbf.Dynamics.DubinsCar import DubinsCar
-from safe_rl_cbf.Dynamics.DubinsCarRotate import DubinsCarRotate
-from safe_rl_cbf.Dynamics.DubinsCarAcc import DubinsCarAcc
 from safe_rl_cbf.Dynamics.PointRobot import PointRobot
-from safe_rl_cbf.Dynamics.PointRobotDisturbance import PointRobotDisturbance
-from safe_rl_cbf.Dynamics.PointRobotsDisturbance import PointRobotsDisturbance
-from safe_rl_cbf.Dynamics.RobotArm2D import RobotArm2D
-from safe_rl_cbf.Dynamics.TwoVehicleAvoidance import TwoVehicleAvoidance
 from safe_rl_cbf.Dynamics.VehicleAndHuman import VehicleAndHuman
 
 
@@ -35,8 +26,8 @@ def select_dynamic_system(system_name, constraints_name):
         
         system = InvertedPendulum(m=1, b=0.1)
 
-    elif system_name == "DubinsCar":
-        system = DubinsCar()
+    elif system_name == "PointRobot":
+        system = PointRobot()
     
     else:
         pass
@@ -62,3 +53,15 @@ def select_dynamic_system(system_name, constraints_name):
     system.set_state_constraints(rou)
 
     return system
+
+def select_RL_env(system_name):
+    if system_name == "InvertedPendulum":
+        from safe_rl_cbf.RL.InvertedPendulum.MyPendulum import MyPendulumEnv
+        from safe_rl_cbf.RL.InvertedPendulum.inverted_pendulum_callback import CustomCallback
+        return MyPendulumEnv, CustomCallback
+    elif system_name == "PointRobot":
+        from safe_rl_cbf.RL.PointRobot.PointRobotEnv import PointRobotEnv
+        from safe_rl_cbf.RL.PointRobot.point_robot_callback import CustomCallback
+        return PointRobotEnv, CustomCallback
+    else:
+        pass
