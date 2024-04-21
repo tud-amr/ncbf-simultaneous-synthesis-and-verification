@@ -24,7 +24,7 @@ pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0 --e
 
 pip install lightning==1.9.5 stable-baselines3==1.8.0
 
-pip install termcolor scipy matplotlib cvxpy cvxpylayers gurobipy gymnasium tensorboard==2.11.2
+pip install termcolor scipy matplotlib cvxpy cvxpylayers gurobipy gymnasium tensorboard==2.11.2 pygame pymunk
 ```
 
 #### Install this repo
@@ -37,7 +37,7 @@ cd ncbf-simultaneous-synthesis-and-verification
 python -m pip install -e .
 ```
 
-## Repulicate 
+## Replicate 
 
 ### Inverted Pendulum
 0. Configuration
@@ -93,6 +93,8 @@ python -m pip install -e .
 
     Visualization
     ```bash
+    python3 safe_rl_cbf/Analysis/draw_training_trajectory.py
+
     python3 safe_rl_cbf/RL/main/test_model.py --config_file point_robot.json
     ```
 

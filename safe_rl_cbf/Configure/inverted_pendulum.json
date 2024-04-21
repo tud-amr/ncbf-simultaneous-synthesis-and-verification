@@ -37,7 +37,7 @@
     },
     
     "RL": {
-        "cbf_model_path": "logs/CBF_logs/IP_18_April/lightning_logs/version_6/checkpoints/epoch=2-step=147.ckpt",
+        "cbf_model_path": "saved_models/inverted_pendulum_umax_12/checkpoints/epoch=0-step=1.ckpt",
         "rl_model_path": "logs/CBF_logs/IP_18_April/with_CBF.zip"
     }
 }

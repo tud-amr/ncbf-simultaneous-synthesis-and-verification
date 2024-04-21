@@ -38,7 +38,7 @@
     },
     
     "RL": {
-        "model_path": "saved_models/point_robot/checkpoints/epoch=4-step=20.ckpt",
-        "rl_model_path": ""
+        "cbf_model_path": "saved_models/point_robot/checkpoints/epoch=4-step=20.ckpt",
+        "rl_model_path": "logs/CBF_logs/PR_17_April/with_CBF.zip"
     }
 }

@@ -27,7 +27,7 @@ class Learner:
        
         self.train_data_module = TrainingDataModule(system=self.model.dynamic_system, train_batch_size=train_batch_size, training_points_num=training_points_num,
                                                      prefix=self.prefix + "training", log_dir=self.log_dir)   
-        self.test_data_module = TestingDataModule(system=self.model.dynamic_system, test_index= test_index , test_batch_size=test_batch_size, prefix=self.prefix + "testing", log_dir=self.log_dir)    
+        self.test_data_module = TestingDataModule(system=self.model.dynamic_system, testing_points_num=testing_points_num, test_index= test_index , test_batch_size=test_batch_size, prefix=self.prefix + "testing", log_dir=self.log_dir)    
     
     def reset(self):
         self.train_data_module.reset()

@@ -34,7 +34,9 @@ k = config["train"]["hyperparameter"]["k"]
 learning_rate = config["train"]["hyperparameter"]["learning_rate"]
 lambda_ = config["train"]["hyperparameter"]["lambda_"]
 
-
+testing_points_num = config["test"]["hyperparameter"]["testing_points_num"]
+test_batch_size = config["test"]["hyperparameter"]["test_batch_size"]
+test_index = config["test"]["hyperparameter"]["test_index"]
 
 if load_pretrained:
     model = NeuralCBF.load_from_checkpoint(pretrained_model_path, dynamic_system=system, network_structure=network_structure, learning_rate=learning_rate, gamma=gamma, lambda_=lambda_)
@@ -47,6 +49,7 @@ else:
     
 bbvt = BBVT(model=model, prefix=config["prefix"] , log_dir=log_dir, 
             training_points_num=training_points_num, train_batch_size=train_batch_size,
+            testing_points_num=testing_points_num, test_batch_size=test_batch_size, test_index=test_index,
             initial_grid_gap=initial_grid_gap, verify_batch_size=verify_batch_size, minimum_grip_gap=minimum_grid_gap)
 
 bbvt.prepare_data()

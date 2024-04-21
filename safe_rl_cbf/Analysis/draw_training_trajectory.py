@@ -93,7 +93,7 @@ plt.ylabel('y', fontsize=15)
 plt.xticks(fontsize=15)
 plt.yticks(fontsize=15)
 
-plt.savefig('fig/trajectories_with_cbf.png', dpi=300)
+plt.savefig('logs/CBF_logs/PR_17_April/fig/trajectories_with_cbf.png', dpi=300)
 
 plt.show()
 # bbox_to_anchor=(1, 1)
