@@ -1,0 +1,31 @@
+[tool.poetry]
+name = "ncbf-simultaneous-synthesis-and-verification"
+version = "0.1.0"
+description = ""
+authors = ["sunnywang"]
+readme = "README.md"
+packages = [
+    { include = "safe_rl_cbf" },
+]
+
+[tool.poetry.dependencies]
+python = "~3.8"
+lightning = "^2.2.3"
+stable-baselines3 = "^2.3.2"
+matplotlib = "==3.7.5"
+termcolor = "^2.4.0"
+scipy = "==1.10.1"
+cvxpy = "==1.4.3"
+cvxpylayers = "==0.1.6"
+gurobipy = "==11.0.1"
+gymnasium = "^0.29.1"
+gym = "^0.26.2"
+shimmy = "^1.3.0"
+tensorboard = "==2.11.2"
+pygame = "^2.5.2"
+pymunk = "^6.6.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

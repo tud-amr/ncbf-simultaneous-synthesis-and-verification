@@ -11,6 +11,9 @@ but it necessitates their certification as CBFs. In this work, we leverage bound
 
 ## Install
 
+#### Install Anaconda and Poetry
+Please find instructions on their websites: [Anaconda](https://www.anaconda.com/) and [Poetry](https://python-poetry.org/).
+
 #### Create a conda environment
 ```bash
 conda create --name <your_env_name> python=3.7
@@ -18,23 +21,19 @@ conda create --name <your_env_name> python=3.7
 conda activate <your_env_name>
 ```
 
-#### Install dependencies
-```
-pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0 --extra-index-url https://download.pytorch.org/whl/cu113
-
-pip install lightning==1.9.5 stable-baselines3==1.8.0
-
-pip install termcolor scipy matplotlib cvxpy cvxpylayers gurobipy gymnasium tensorboard==2.11.2 pygame pymunk
-```
-
-#### Install this repo
+#### Install this repo and dependencies
 
 ```bash
 git clone https://github.com/tud-amr/ncbf-simultaneous-synthesis-and-verification.git
 
 cd ncbf-simultaneous-synthesis-and-verification
 
-python -m pip install -e .
+poetry install
+```
+
+#### Activate virtual env
+```bash
+poetry shell
 ```
 
 ## Replicate 

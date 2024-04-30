@@ -63,7 +63,8 @@ class NeuralCBF(pl.LightningModule):
         # generate control vertices
         self.u_v = self.dynamic_system.control_vertices
         self.d_v = self.dynamic_system.disturb_vertices
-        
+        self.training_step_outputs = []
+        self.testing_step_outputs = []
 
     @staticmethod
     def param_init(m):
@@ -639,7 +640,7 @@ class NeuralCBF(pl.LightningModule):
                 _, index_control = torch.max(hs_next, dim=1, keepdim=True)
 
                 index_control = index_control.squeeze()
-                u_v = torch.cat(self.u_v, dim=0)
+                u_v = torch.cat(self.u_v, dim=0).to(s.device)
                 u_max = u_v[index_control]
                 u_max = u_max.reshape(-1, self.dynamic_system.nu).to(s.device)
             
@@ -657,7 +658,7 @@ class NeuralCBF(pl.LightningModule):
                 _, index_control = torch.min(hs_next, dim=1, keepdim=True)
 
                 index_control = index_control.squeeze()
-                d_v = torch.cat(self.d_v, dim=0)
+                d_v = torch.cat(self.d_v, dim=0).to(s.device)
                 d_min = d_v[index_control]
                 d_min = d_min.reshape(-1, self.dynamic_system.nd).to(s.device)
         else:
@@ -674,7 +675,7 @@ class NeuralCBF(pl.LightningModule):
                 _ , index_control = torch.max(hs_next, dim=1, keepdim=True)
 
                 index_control = index_control.squeeze()
-                u_v = torch.cat(self.u_v, dim=0)
+                u_v = torch.cat(self.u_v, dim=0).to(s.device)
                 u_max = u_v[index_control]
                 u_max = u_max.to(s.device)
             else:
@@ -693,7 +694,7 @@ class NeuralCBF(pl.LightningModule):
                 _, index_control = torch.min(hs_next, dim=1, keepdim=True)
 
                 index_control = index_control.squeeze()
-                d_v = torch.cat(self.d_v, dim=0)
+                d_v = torch.cat(self.d_v, dim=0).to(s.device)
                 d_min = d_v[index_control]
                 d_min = d_min.to(s.device)
             else:
@@ -761,14 +762,16 @@ class NeuralCBF(pl.LightningModule):
 
         batch_dict = {"loss": total_loss, **component_losses}
 
-        
+        self.training_step_outputs.append(batch_dict)
+
         return batch_dict
     
 
-    def training_epoch_end(self, outputs):
+    def on_train_epoch_end(self):
         """This function is called after every epoch is completed."""
         # Outputs contains a list for each optimizer, and we need to collect the losses
         # from all of them if there is a nested list
+        outputs = self.training_step_outputs
 
         self.epoch_end_time = time.time()
 
@@ -814,6 +817,7 @@ class NeuralCBF(pl.LightningModule):
             # Log the other losses
             self.log(loss_key + "/train", avg_losses[loss_key], sync_dist=True)
            
+        self.training_step_outputs.clear()
         # print_info(f"current learning rate is {self.trainer.optimizers[0].param_groups[0]['lr']}")
 
     def on_train_end(self) -> None:
@@ -895,17 +899,21 @@ class NeuralCBF(pl.LightningModule):
         batch_dict["admissible_area"]["state"] = admissible_area_state
 
 
+        self.testing_step_outputs.append(batch_dict)
 
         return batch_dict
 
-    def test_epoch_end(self, outputs):
-        
+    def on_test_epoch_end(self):
+
+        outputs = self.testing_step_outputs
+
         print_info("############### Testing end #########################")
         
         save_dir = self.trainer.default_root_dir + "/test_results.pt" 
         torch.save(outputs, save_dir)
         
         print_info(f"results is save to {save_dir}")
+        self.testing_step_outputs.clear()
         
     def configure_optimizers(self):
         clbf_params = list(self.h.parameters()) # list(self.g.parameters())

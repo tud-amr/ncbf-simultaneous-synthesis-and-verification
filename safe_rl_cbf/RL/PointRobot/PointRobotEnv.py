@@ -1,10 +1,9 @@
 
-import gym
-from gym import spaces
-from gym.utils import seeding
-import numpy as np
+import gymnasium as gym
+from gymnasium import spaces
 import torch
 import random
+from typing import Optional
 import os
 import pygame
 import numpy as np
@@ -13,6 +12,7 @@ from pymunk import Vec2d
 import pymunk.pygame_util
 import time
 from safe_rl_cbf.RL.PointRobot.PointRobot import PointRobot
+from stable_baselines3.common.env_checker import check_env
 
 class PointRobotEnv(gym.Env):
     def __init__(self, render_sim=False):
@@ -252,7 +252,7 @@ class PointRobotEnv(gym.Env):
         end_time = time.time()
         self.step_executing_time = end_time - start_time
 
-        return obs, reward, done, info
+        return obs, reward, done, False, info
     
     def get_observation(self):
         x, y = self.point_robot.shape.body.position / self.scale
@@ -268,12 +268,12 @@ class PointRobotEnv(gym.Env):
         
         return np.array([x_obs, y_obs, v_x_obs, v_y_obs], dtype=np.float32)
 
-    def reset(self):
-        
+    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
+        super().reset(seed=seed)
         self.x_init = random.uniform(0.3, 1)
         self.y_init = random.uniform(0.5, 3)
         self.point_robot.set_states(self.x_init, self.y_init)
-        return self.get_observation()
+        return self.get_observation(), {"state": self.state}
 
     def render(self, mode='human'): 
         if self.render_sim is False:
@@ -294,4 +294,6 @@ class PointRobotEnv(gym.Env):
 
 if __name__ == "__main__":
     env = PointRobotEnv(render_sim=True)
+
+    check_env(env)
     

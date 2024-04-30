@@ -6,9 +6,9 @@ import numpy as np
 import copy
 
 import torch
-import gym
-from gym import spaces
-from gym.utils import seeding
+import gymnasium as gym
+from gymnasium import spaces
+from gymnasium.utils import seeding
 from gymnasium.envs.classic_control import utils
 from gymnasium.error import DependencyNotInstalled
 
@@ -208,7 +208,7 @@ class MyPendulumEnv(gym.Env):
         end_time = time.time()
         self.step_executing_time = end_time - start_time
 
-        return self._get_obs(), -costs, False, {"username": "wangxinyu"}
+        return self._get_obs(), -costs, False, False, {"loss": -costs}
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         # super().reset(seed=seed)
@@ -238,7 +238,7 @@ class MyPendulumEnv(gym.Env):
 
         if self.render_mode == "human":
             self.render()
-        return self._get_obs()
+        return self._get_obs(), {"state": self.state}
 
     def _get_obs(self):
         theta, thetadot = self.state
