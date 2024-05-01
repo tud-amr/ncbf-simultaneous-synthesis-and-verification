@@ -16,7 +16,7 @@ Please find instructions on their websites: [Anaconda](https://www.anaconda.com/
 
 #### Create a conda environment
 ```bash
-conda create --name <your_env_name> python=3.7
+conda create --name <your_env_name> python=3.8
 
 conda activate <your_env_name>
 ```
@@ -29,11 +29,6 @@ git clone https://github.com/tud-amr/ncbf-simultaneous-synthesis-and-verificatio
 cd ncbf-simultaneous-synthesis-and-verification
 
 poetry install
-```
-
-#### Activate virtual env
-```bash
-poetry shell
 ```
 
 ## Replicate 

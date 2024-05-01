@@ -33,10 +33,10 @@ env.set_barrier_function(cbf_model)
 
 model = PPO.load(rl_model_dir)
 
-obs = env.reset()
+obs, _ = env.reset()
 while True:
     action, _states = model.predict(obs)
-    obs, rewards, dones, info = env.step(action)
+    obs, rewards, dones, _, info = env.step(action)
     env.render()
     if  dones is True:     
-        obs = env.reset()
+        obs, _ = env.reset()
