@@ -7,9 +7,9 @@ Implementation of the Branch-and-Bound Verification-in-the-Loop Training (BBVT) 
 Control Barrier Functions (CBFs) that provide formal safety guarantees have been widely used for safetycritical systems. However, it is non-trivial to design a CBF. Utilizing neural networks (NNs) as CBFs has shown great success,
 but it necessitates their certification as CBFs. In this work, we leverage bound propagation techniques and the Branchand-Bound scheme to efficiently verify that a NN satisfies the conditions to be a CBF over the continuous state space. To accelerate training, we further present a framework that embeds the verification scheme into the training loop to synthesize and verify a neural CBF (nCBF) simultaneously. In particular, we employ the verification scheme to identify partitions of the state space that are not guaranteed to satisfy the CBF conditions and expand the training dataset by incorporating additional data from these partitions. The NN is then optimized using the augmented dataset to meet the CBF conditions. We show that for a non-linear control-affine system, our framework can efficiently certify a NN as a CBF and render a larger safe set than state-of-the-art nCBF works. We further employ our learned nCBF to derive a safe controller to illustrate the practical use of our framework.
 
-<div style="text-align:center;">
+<p align="center">
 <img src="assets/schematic_overview.jpg" alt="BBVT Scheme" width="400">
-</div>
+</p>
 
 ## Install
 
@@ -43,9 +43,9 @@ python -m pip install -e .
 
 ### Inverted Pendulum (Assessing the Verification Efficiency and the Size of the Safe Set)
 
-<div style="text-align:center;">
+<p align="center">
 <img src="assets/inverted_pendulum.png" alt="Inverted Pendulum Scheme" width="250">
-</div>
+</p>
 
 0. Configuration
 
@@ -79,9 +79,9 @@ python -m pip install -e .
 
 ### 2D Navigation (Combine learned nCBF with Reinforcement Learning)
 
-<div style="text-align:center;">
+<p align="center">
 <img src="assets/2d_nav_trajectories_with_cbf.png" alt="Inverted Pendulum Scheme" width="250">
-</div>
+</p>
 
 1. Train nCBF
 
